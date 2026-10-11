@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
+import argparse
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / 'build/native'
@@ -20,14 +21,23 @@ def sha(path):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--public', action='store_true', help='Package refreshed docs and relative verification paths for publication')
+    args = parser.parse_args()
     version = re.search(r'project\(PlastiCZRecovery VERSION (\d+\.\d+\.\d+)', (ROOT / 'CMakeLists.txt').read_text())[1]
     tag = version.replace('.', '')
     proof_path = ROOT / f'analysis/recovered/release-{version}/provenance.json'
     proof = json.loads(proof_path.read_text())
     assert proof['version'] == version
-    dest = ROOT / f'build/distribution/PlastiCZ Recovery {version} arm64'
+    destination = ROOT / ('build/distribution/public' if args.public else 'build/distribution')
+    dest = destination / f'PlastiCZ Recovery {version} arm64'
     archive = dest.parent / (dest.name + '.zip')
     assert not dest.exists() and not archive.exists(), 'Refusing to overwrite an existing release'
+    if args.public:
+        # Published sources must still match the verified DSP, editor and artwork.
+        for name, expected in proof['sources_sha256'].items():
+            if name.startswith(('src/', 'assets/classic/')):
+                assert sha(ROOT / name) == expected, f'Unverified source change: {name}'
     bundles = []
     for format, extension in [('AU', 'component'), ('VST3', 'vst3')]:
         bundle = BUILD / f'PlastiCZRecovery_artefacts/Release/{format}/PlastiCZ Recovery.{extension}'
@@ -52,6 +62,25 @@ def main():
     files.update({p.name: p for p in sorted((BUILD / f'ui-{tag}').glob('editor-*.png'))})
     for name, path in files.items():
         shutil.copy2(path, dest / name)
+    if args.public:
+        def relative_paths(value):
+            if isinstance(value, dict):
+                return {key: relative_paths(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [relative_paths(item) for item in value]
+            if isinstance(value, str):
+                return value.replace(str(ROOT) + '/', '')
+            return value
+        published_proof = relative_paths(proof)
+        published_proof['public_package'] = {
+            'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+            'metadata_changes': 'Local fixture paths made project-relative; documentation refreshed; verified plug-in binaries unchanged.',
+        }
+        (dest / 'verification-provenance.json').write_text(json.dumps(published_proof, indent=2) + '\n')
+        # Catch accidental publication of this machine's personal paths, including in binaries.
+        for path in dest.rglob('*'):
+            if path.is_file():
+                assert str(Path.home()).encode() not in path.read_bytes(), f'Personal home path in {path.relative_to(dest)}'
     # Include directories explicitly: writing only files loses bundle dates.
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as output:
         for path in [dest, *sorted(dest.rglob('*'))]:

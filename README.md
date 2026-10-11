@@ -238,6 +238,9 @@ The reviewed interface images are `build/native/ui-032/editor-classic.png` and
 `build/native/ui-032/editor-modern.png`, plus the corresponding `-settings.png`
 views. After verification, package with `python3 scripts/package_release.py`;
 this refuses unverified binaries and preserves bundle modification dates.
+Use `python3 scripts/package_release.py --public` for a downloadable release:
+it refreshes the documentation, makes local verification paths relative, and
+keeps the previously tested plug-in binaries unchanged.
 
 ## Verification and its limits
 
