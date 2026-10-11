@@ -1,0 +1,61 @@
+Original i386 waveform oracle
+============================
+
+Implementation: scripts/x86_oracle.py
+Dependency pin: scripts/requirements-oracle.txt (Unicorn 2.1.4)
+Environment: workspace .venv, installed with pip. No global packages changed.
+
+Run:
+  .venv/bin/python scripts/x86_oracle.py
+  .venv/bin/python scripts/test_x86_oracle.py
+
+On this macOS machine, Unicorn's native JIT traps with SIGILL in mem_map when
+run inside the Codex sandbox. The approved unsandboxed run succeeds. This is
+a JIT execution restriction, not an original plugin instruction failure.
+
+Products:
+- analysis/recovered/waveform-oracle.csv: 35,088 rows, all finite. Eight original
+  wave functions on phase grid 0..1 inclusive in 1/256 increments and distortion
+  grid 0..1 inclusive in 1/16 increments, plus eight corresponding DC offsets.
+- CSV columns: kind,wave,phase,distortion,expected,expected_bits. wave is 0..7;
+  names are Saw,Square,Pulse,SawPulse,DblCos,Reso,ResoSqu,DblSaw. expected_bits
+  preserves the exact emulated float32 result, including signed zero.
+- analysis/recovered/cosine-table.f32: 16,384 little-endian float32 samples,
+  65,536 bytes. SHA256:
+  bd74e9a711942c8a2d06299f051bbfcedb988d3ab5c093923973afa7553f4b2f
+- analysis/recovered/waveform-oracle.metadata.json: source fingerprint,
+  addresses, CPU settings, fixture scope, table hash, and limitations.
+
+Execution details:
+- The copied source is fingerprint checked before using its fixed addresses:
+  aee3175bd128a69ee82c8e31a34a36284e21698f022c6f722a6c42f2fc94b635.
+- Mach-O segments are mapped by vmaddr/fileoff, including __IMPORT at 0x69000
+  sourced from file offset 0x59000. BSS/COMMON are zeroed explicitly.
+- Original waveform pointer table 0x4b140:
+  ef38 efbe f072 f0fa f182 f20a f2a0 f34a
+- Original DC-offset table 0x4b120:
+  ee9a eea2 eeaa eeb2 eed4 eefe ef0e eedc
+- Original cosine initializer runs from 0xed14 to 0xed5c (stopping before
+  object writes) and produces its own SSE float32 input arguments. Import
+  stub 0x69352 invokes the current ARM host's libSystem cosf via ctypes.
+- Leaf calls use cdecl float arguments and x87 ST0 results. A tiny FSTP dword
+  return trampoline captures exact float32 bits; no manual x87 unpacking.
+- DSP x87 control word is 0x0c3f (24-bit precision, truncate toward zero),
+  based on the parent investigation's original process entry path.
+- SSE MXCSR is 0x1f80 (default round-to-nearest).
+
+Verification:
+Five tests pass: Mach-O import mapping, FISTP truncation for both signs,
+all 16,384 cosine table values against separately calculated float32 SSE
+arguments, simple original DC-offset functions, and phase 0/1 wrap identity.
+Offset functions evaluate to 0,0,d,0.5*d,d,0.5,0.7-0.3*d,-0.38*d with original
+float32 constants and SSE arithmetic. These values were verified by original
+instruction execution rather than assumed from waveform names.
+
+Evidence limits:
+This runs original waveform instructions under an emulator, not the original
+plugin in a legacy macOS DAW. Host ARM cosf can differ in low bits from the old
+x86 libm. Supplying the same exported table to native comparison isolates that
+uncertainty from the recovered waveform algorithms. Envelope, voice allocation,
+MIDI timing, modulation, effects, host integration, and full-preset rendering
+are outside this scalar fixture's coverage.

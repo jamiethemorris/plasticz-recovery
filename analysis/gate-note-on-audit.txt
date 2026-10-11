@@ -1,0 +1,56 @@
+Gate phase lifecycle review
+===========================
+
+Original binary SHA256:
+aee3175bd128a69ee82c8e31a34a36284e21698f022c6f722a6c42f2fc94b635
+
+Finding: each original new/retriggered voice resets pattern-gate phase at
+object +0x4005f0. It does not reset gate envelope/smoothing at +0x40060c.
+This is a note-event side effect outside the effect dispatcher itself.
+
+Evidence: analysis/evidence/functions/0xf5e4.txt, plus focused llvm-objdump
+from instruction start 0xf5e4. After selected-voice memset at 0xf6f8:
+  0xf6fd xor eax,eax
+  0xf6ff mov edx,[ebp+8]
+  0xf702 mov [edx+0x4005f0],eax
+
+The mono legato path updates note/glide state and branches from 0xf8b6 to the
+return at 0xf737, bypassing this reset. A mono first note follows the ordinary
+voice-allocation path and does reset gate phase.
+
+Independent original-instruction observations
+-------------------------------------------
+With factory preset 17, direct effect calls for constant input produce exactly
+the native formula's phase and envelope:
+  zero-based sample 2755: phase 0x3dfffa59, envelope 0x3f5b3ebf
+  zero-based sample 2756: phase 0x3e000910, envelope 0x3f5b173c
+  zero-based sample 5511: phase 0x3e7ff4f9, envelope 0x3dfbd294
+  zero-based sample 5512: phase 0x3e80006e, envelope 0x3dfd164b
+
+After 2,757 frames, block sizes 1, 44, 512 and 2,757 all produce the same phase
+0x3e000910 and envelope 0x3f5b173c. The gate arithmetic and table lookup are
+therefore not the source of the aggregate preset mismatch.
+
+A fresh full original render with the canonical scheduler, 512-frame preroll,
+MIDI note 24 and velocity 100/127 exactly reproduces the retained preset-017.wav
+for the first 4,096 emitted stereo frames. Thus the frozen reference is
+internally reproducible; its gate restarts at the note event.
+
+Explicit event checks used original control_tick, render and note_on, once with
+polyphony parameter 35=1 and once with mono parameter 35=0. State byte strings
+below are little-endian f32 bytes for (phase, gate envelope):
+  Before first note: (f537be3c, c2fe9a3e)
+  After first note:  (00000000, c2fe9a3e), both mono and poly
+  After 64 frames:  (c2373e3b, 92baaa3e)
+  After poly note:  (00000000, 92baaa3e)
+  After mono legato:(c2373e3b, 92baaa3e)
+
+Required native behavior: reset only the gate phase in the selected-voice
+initialization branch of SynthEngine::noteOn, leaving the mono-legato early
+return and smoothed gate state intact. This was reported to the parent task;
+this audit did not modify Effects or SynthEngine source.
+
+In the failing native path, the gate retained 512 preroll frames of phase lead.
+Its first closing transition appeared at emitted frame 2,288, while original
+phase correctly restarted on note-on. The 44-sample limiter delay explains the
+observed offset: 2,756 - 512 + 44 = 2,288.

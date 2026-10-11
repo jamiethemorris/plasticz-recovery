@@ -1,0 +1,142 @@
+PlastiCZ original 4x oversampling reconstruction
+==============================================
+
+Original image: analysis/source/PlastiCZ-i386
+SHA256: aee3175bd128a69ee82c8e31a34a36284e21698f022c6f722a6c42f2fc94b635
+
+Native files: src/Downsampler4x.h/.cpp, src/SynthEngine.h/.cpp
+Original-instruction fixture: scripts/oversampling_oracle.py
+Cached comparator: tests/check_oversampling.cpp
+Fixture directory: analysis/recovered/oversampling
+Focused original assembly: analysis/evidence/oversampling-render-disassembly.txt
+Constructor assembly: analysis/evidence/full-dsp-disassembly.txt, 0x281a6 region
+
+Finding ledger
+--------------
+0xf9b4..0xf9bf selects 4x when parameter 37 >= 0.5. The original has one mono
+oversampling buffer, shared by all voices, at object +0x40eb14. Parameter setter
+0x12f4a stores parameter 37 without clearing the decimator or voice histories.
+
+0xf9d1..0xfa08 scales amplitude and DCW smoothing by 0.25 * original rateFactor
+before multiplying their 0.0075f and 0.1f constants. 0x104bf..0x104ee quarters
+both oscillator phase increments and quadruples the voice-loop sample count.
+The waveform functions, mixing, voice ordering and state update arithmetic
+remain the same as the non-oversampled path.
+
+0x10512 clears the intermediate 4x buffer when the first qualifying voice is
+found. All qualifying voices add into that same buffer in their original order.
+A voice qualifies if ampStage != 0 or smoothAmp > 3.0517578125e-05f. The original
+tests eligibility once per voice-render invocation, not per sample. If there is
+no qualifying voice, 0xffeb skips the downsampler entirely and leaves its history
+unchanged. When 4x is off, history is also unchanged.
+
+0x1001c..0x104ba is a fully unrolled recursive decimator: four filter sections
+are evaluated for each of four high-rate input samples, then only the fourth
+filtered sample replaces the host-rate output. Ten history floats are retained:
+the previous two inputs followed by the previous two outputs of each section.
+The final section applies the global gain before its feedback additions.
+
+Constructor 0x281a6 sets all ten histories to zero and writes these exact words:
+  global gain: 0x3a3e4f85
+  section 1:  0x3fb365ce, 0x3fc1ddc6, 0xbf18e482
+  section 2:  0xbe81e17d, 0x3fbb19a7, 0xbf352ddd
+  section 3:  0xbf5deb2e, 0x3fb4b682, 0xbf57691b
+  section 4:  0xbf86b870, 0x3fb44f69, 0xbf7374ab
+They are fixed coefficients, not recomputed from host rate or imported libm.
+
+0xfeb7..0xff67 clears only the eight section-output histories whose absolute
+value is less than float word 0x2b8cbccc (approximately 1e-12). The two input
+histories are excluded. Cleanup occurs once at the end of each original
+voice-render invocation after 4x processing, not after every high-rate sample.
+This makes preserving original render boundaries important for very quiet tails.
+
+Native implementation
+---------------------
+Downsampler4x implements the recovered four-section arithmetic directly with
+separate f32 operations and explicit coefficient words. It does not use a
+generic oversampling library, emulation or historical binary code at runtime.
+
+SynthEngine chooses the original mode at each renderDry invocation. It renders
+four fast samples per output frame into a fixed 4096-float scratch array, then
+decimates. Calls larger than the scratch array are processed in 1024-output-frame
+chunks. The eligible voice mask is captured once for the entire original call;
+cleanup is deferred until all chunks are complete. Consequently scratch chunk
+boundaries neither retire a voice early nor clear filter histories prematurely.
+
+All rendering and mode changes allocate no memory. No maxBlockSize-dependent
+allocation is needed, and direct renderDry calls beyond the preparation size
+remain bounded. Ordinary 4x changes retain histories exactly as the original.
+SynthEngine reset clears the new histories, as for the other native signal
+stages. The parent owns the immediate all-sound-off policy and integration.
+The decimator is a recursive filter with frequency-dependent group delay; it
+does not add a separate fixed integer-delay buffer to the existing limiter.
+
+Compile with -ffp-contract=off -fno-fast-math. Clang contract(off) also appears
+in Downsampler4x.cpp. The plug-in wrapper continues to preserve gradual underflow
+and restore the caller's floating-point state.
+
+Strict original-instruction comparison
+--------------------------------------
+19 cases compare 427,817 audio sample words and 183,312 state words exactly:
+zero audio mismatches, zero state mismatches, maximum absolute error 0, RMS 0.
+Each engine snapshot includes all 16 original 92-byte voice records plus all
+ten decimator history floats. Standalone snapshots contain the ten histories.
+
+3 standalone decimator streams contribute 29,763 output samples: separated
+positive/negative impulses, deterministic noise followed by zero, and alternating
+tiny/subnormal values. Calls use 0,1,3,17,44,127,1023,1024,1025,4097,512,2048 output
+frames. This separately checks filter recurrence and per-call cleanup, including
+state continuity across calls.
+
+5 dry synth cases contribute 88,140 samples at 22,050,44,100,48,000,96,000 and
+192,000 Hz. Each includes an inactive-voice render, simultaneous notes 24/60/96,
+explicit control ticks, 0/1/43/44/45/127/1023/1024/1025/4097-frame render counts,
+release, and live mode values 0, the largest float below 0.5, 0.5, 1, 0, 1.
+The oversized calls verify scratch chunking against one unsplit original call.
+
+11 representative full-path cases contribute 309,914 stereo channel samples,
+one factory preset per FX selector, with original effects and output stages
+enabled at 44,100 Hz. Each includes silent preroll, persistent fractional 1 ms
+scheduling, notes 24 and 67, varied host block sizes including zero and 4097,
+live 4x off/on switching, and release. Preset indices by selector 0..10 are:
+14,2,13,17,4,25,0,1,3,9,111. These include both mono and poly voice modes and
+seven waveform selectors; the pre-existing scalar waveform oracle covers all
+eight original waveform functions independently.
+
+Harness integrity
+-----------------
+The generator imports frozen FullDSPOracle and scheduling helpers unchanged.
+Standalone filter tests replace five bytes at the original voice-loop entry
+0xfa3f with a jump to 0xfff5, keeping the original stack setup, decimator code
+and end-of-call cleanup. Only the emulator's copy is patched; the source image
+and installed original are untouched. The code bytes are restored and Unicorn
+translation-cache entries explicitly invalidated. A fresh, unpatched emulator
+is then created for all dry-voice and full-path cases.
+
+An initial development run exposed Unicorn's retained translation of the
+temporary jump after restoring bytes. Those unaccepted fixtures skipped voice
+processing and were replaced. All retained fixture files were regenerated with
+explicit cache invalidation and a fresh emulator for real render tests; their
+hashes and dependency hashes are recorded in manifest.json. No frozen helper
+was edited to make a native result match.
+
+Commands
+--------
+  .venv/bin/python scripts/oversampling_oracle.py
+  clang++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -ffp-contract=off \
+    -fno-fast-math -Isrc src/Downsampler4x.cpp src/SynthEngine.cpp \
+    src/Waveforms.cpp src/Presets.cpp src/Effects.cpp src/LegacyReverb.cpp \
+    src/OutputProcessing.cpp tests/check_oversampling.cpp \
+    -o build/check_oversampling
+  build/check_oversampling analysis/recovered/oversampling
+
+Scope
+-----
+The target remains the accepted original-instruction emulator with current ARM
+libSystem math imports, not a legacy-host audio recording. Dry multi-rate cases
+isolate the 4x core from the documented full-synth constructor-rate discrepancy
+outside 44,100 Hz. Full-path 4x exactness is established for the eleven listed
+scenarios at 44,100 Hz, not an exhaustive parameter/host/rate exploration or a
+new six-second render of all 128 factory presets. Parent-owned non-4x regression,
+real AU/VST3 host comparisons, reset/all-sound-off and allocation-guard tests are
+separate integration evidence and should be reported with their actual results.

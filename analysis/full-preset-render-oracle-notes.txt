@@ -1,0 +1,144 @@
+Original full signal-path factory reference renders
+
+Exporter: scripts/render_full_preset_oracle.py
+Tests: scripts/test_render_full_preset_oracle.py
+DSP helper owned/audited separately: scripts/full_dsp_oracle.py
+Canonical artifacts: analysis/recovered/preset-renders-full/
+Short coverage/determinism artifacts: analysis/recovered/preset-renders-full-smoke/
+Dry references remain untouched in analysis/recovered/preset-renders/.
+
+Protocol: plasticz-original-full-factory-c1-v1
+- Original i386 voice/control instructions plus original effects/output dispatcher
+  0x10e4a execute under Unicorn. No native reconstructed audio function contributes
+  to these reference samples. The adapter only interleaves the two returned
+  float32 channel byte strings for the unchanged OriginalScheduler.
+- All 38 factory float32 parameter words are preserved. In particular, FX type,
+  mix, bypass and oversampling are not overridden. All recovered factory presets
+  happen to have parameter37=0, so this factory suite does not test 4x mode on.
+- "Full" denotes the selected complete signal path. It does not mean forcing
+  every effect to 100 percent wet; the original factory mix settings are retained.
+- Canonical rate 44,100 Hz; host block512; MIDI note24, channel0, velocity
+  float32(100/127); fixed host tempo120 BPM.
+- Initialize original DSP/effect objects and parameter setters; render/discard
+  512 frames with no held note through the persistent original scheduler.
+- Note-on occurs before emitted frame0. Hold88,200 frames (2 seconds); note-off
+  occurs exactly before emitted frame88,200, splitting the host block there.
+  Render176,400 release frames (4 seconds), total264,600 frames per preset.
+- The +0x406a44 float32 control countdown is preserved across preroll, host block
+  and note boundaries. At note-on it is17.200027465820312 under this protocol.
+- Files are RIFF IEEE float32 stereo (format tag3), little-endian interleaved
+  L/R, eight bytes/frame. No clipping, normalization, denoising, alignment or
+  removal of bias is applied to emitted reference samples.
+
+Preroll is measured, not asserted silent
+- Every short all128 run produced some nonzero no-note preroll. Most peaks are
+  about1e-18 to2e-17. Several FX selections produce a larger start-up output;
+  the largest observed512-frame preroll peak was0.0037493144627660513, preset97.
+- This is recorded evidence of the isolated original initialized signal path,
+  not proof that a legacy hosted instance has the identical start-up history.
+  No attempt is made to suppress it. Sidecars preserve the preroll payload hash,
+  per-channel peak/RMS/mean/nonzero counts, and total frame count.
+
+Runtime/import boundary
+- Original x86 instructions are emulated; this is not execution of the VST in
+  an old macOS DAW. GUI, licensing wrapper and host integration are not invoked.
+- cosf, expf, powf, sinf, cos, pow, sin, fmod, floor and fmax are provided by this
+  host's ARM /usr/lib/libSystem.B.dylib, when reached. Memory/allocation imports
+  use the helper's bounded per-fixture emulated heap. Historical x86 math-library
+  rounding is not established. Actual calls are counted per case.
+- Original constructor/parameter helper calls use the helper's recorded control
+  words; audio uses DSP x87 control word0x0c3f and SSE MXCSR0x1f80.
+- Unknown imports fail closed: the real helper invocation of unresolved import
+  0x69000 raised "Unimplemented original import at 0x69000" in the short run.
+- Full helper initialization was audited by the parent investigation against
+  cached original constructors1454a/14106, sample-rate setter12c9e and parameter
+  setter12f4a before authorizing the canonical run. This does not substitute for
+  future original-host validation.
+- Audited lifecycle scope is44.1kHz. A subsequent read-only audit found that the
+  original14106 constructor hardcodes44100 before ed14, which initializes object
+  +0x5cc=1/sampleRate; later12c9e does not update that field. The current full
+  helper calls superclass ed14 at the requested rate. This does not affect the
+  canonical44.1kHz suite, but non-44.1kHz CLI runs are not yet validated against
+  the original constructor-then-host-rate lifecycle. Helpers remain frozen while
+  this suite runs; other-rate support requires a separate revision/provenance.
+
+Provenance and recovery
+- Manifest config pins original binary and factory JSON SHA-256, exporter,
+  full DSP helper, dry scheduler module, voice helper, scalar oracle hashes,
+  protocol fields, Python/Unicorn/macOS/machine versions and math boundary.
+- Dependency hashes are checked before every case and before saving new audio.
+  If a helper changes during export, the exporter stops rather than silently
+  combining outputs under one provenance identity.
+- Resume requires identical configuration/provenance plus verified preset index,
+  parameter hash, WAV hash, audio payload hash, sample rate and exact frame count.
+  NaN/Inf samples are rejected. WAV then sidecar then manifest are atomically
+  replaced individually. A crash between writes leaves a resumable partial case.
+- Per-case JSON records all38 float words, per-channel statistics, tail statistics,
+  scheduler counts/countdowns, actual import calls and file/content hashes.
+- A full_protocol_complete=true summary requires all128 canonical-duration cases.
+  A short complete128 smoke suite deliberately reports full_protocol_complete=false.
+- This exporter does not compare the current native engine. No native-equivalence
+  PASS is implied by successfully exporting an original reference.
+
+Executed coverage before canonical export
+- Seven exporter tests passed: raw stereo word interleaving including negative
+  zero/subnormal bits; WAV headers and malformed rejection; exact MIDI boundaries
+  and retained nonzero preroll; no clipping; resume validation; source-change
+  failure; and unknown-import failure behavior.
+- All128 presets rendered at20ms hold +20ms release. Each was then independently
+  reinitialized on the reused emulator and rendered again. All128 emitted payloads
+  and all128 preroll payloads were byte-identical on repeat. No non-finite samples
+  or unresolved imports occurred. The run took56.645 seconds.
+- Short run config SHA-256:
+  b576081a9943b0cc7a3a9f078142bd588c40361d8573fafc339e5d6f3589586e
+- Short-run actual extended imports: pow1024, sin1024, cos1024, malloc3328,
+  fmax291328, memcpy1425 (counts shown are first render per case, not repeats).
+- Canonical completion status and aggregate measurements are authoritative in
+  preset-renders-full/manifest.json and summary.json, not inferred from smoke.
+
+Commands (Unicorn JIT requires the approved unsandboxed execution path on this Mac)
+  .venv/bin/python scripts/test_render_full_preset_oracle.py -v
+  .venv/bin/python scripts/render_full_preset_oracle.py \
+    --output analysis/recovered/preset-renders-full-smoke --presets all \
+    --hold-seconds 0.02 --release-seconds 0.02 --repeat-check
+  .venv/bin/python scripts/render_full_preset_oracle.py \
+    --output analysis/recovered/preset-renders-full --presets all
+
+Use a new output directory after any recorded dependency or protocol changes.
+The default resume path verifies completed artifacts before skipping them.
+
+Canonical completion and final verification
+- Completed all128 original full-path stereo WAVs: each264,600 frames, total
+  WAV storage270,957,568 bytes. All workers exited0; no unresolved imports or
+  non-finite samples occurred. Every case has517 host blocks,6,012 control ticks
+  including preroll, and ending countdown17.213760375976562.
+- Full suite config SHA-256:
+  6db80ae482b46c14c5d5632b5e322fef558a0747a46e8a9b2b70719647001d35
+- Four disjoint source manifests were merged after checking all128 unique
+  indexes, all128 WAV and payload hashes, all128 parameter hashes and exact
+  factory float-word arrays, canonical timing, complete stereo frame counts,
+  finite samples and identical source/dependency provenance. Source manifests
+  remain under provenance/shard-00.manifest.json through shard-03.manifest.json.
+  The separately preserved provenance/frozen-scripts/ copies match all five
+  pinned dependency hashes exactly.
+- Merge implementation: scripts/merge_full_preset_oracle.py. Its SHA-256 is
+  recorded in verification.json. The consolidated manifest supersedes the first
+  partial shard manifest; the original partial snapshot remains in provenance.
+- Full references peak at1.121512770652771 (preset27); samples are unchanged.
+  Preroll maximum remains0.0037493144627660513 (preset97), with some nonzero output
+  in all128 no-note prerolls.
+- The first882 stereo frames of EVERY canonical render also match the separate
+  repeated short-run reference byte-for-byte:128/128. Evidence and prefix hashes
+  are in cross-run-prefix-verification.json. Each short run had already passed
+  a complete second render including identical preroll. The six-second renders
+  themselves were performed once per canonical case; do not label them full-
+  duration repeated-render tests.
+- Actual extended imports across canonical cases: pow1024, sin1024, cos1024,
+  malloc3328, fmax33,934,336, memcpy162,950. Other enabled imports were not reached
+  in this factory protocol. Summed case render time was1,616.352 seconds across
+  the independent worker processes.
+- The separately implemented current-native-preview comparison reports all128
+  presets differ from these full references, as expected before original FX and
+  output processing are ported. See preview-comparison/ inside the canonical
+  directory for its exact metrics and stereo differences. This reference work
+  does not turn that mismatch into a native PASS.

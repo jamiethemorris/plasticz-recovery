@@ -1,0 +1,37 @@
+PlastiCZ Recovery — Apple Silicon AU + VST3
+
+Copy PlastiCZ Recovery.component into:
+  ~/Library/Audio/Plug-Ins/Components/
+Copy PlastiCZ Recovery.vst3 into:
+  ~/Library/Audio/Plug-Ins/VST3/
+
+Create these user folders if needed. Close your DAW before replacing an older
+PlastiCZ Recovery build, then reopen/rescan and load PlastiCZ Recovery.
+Builds refresh the bundle modification dates after signing; the ZIP preserves
+those dates. In REAPER, enable "Scan new/updated plug-ins on startup" in the
+VST preferences. If needed, use Preferences > Plug-ins > VST > Re-scan.
+A fresh bundle timestamp by itself does not guarantee detection by every host.
+
+These are native arm64 bundles for native Apple Silicon hosts, locally ad-hoc
+signed. Keep the original PlastiCZ.vst for old sessions and reference.
+This package does not automatically replace original VST2 instances.
+
+The small gear at the bottom right opens settings: Classic / Modern interface,
+4x oversampling, Import preset / bank, and Panic / all notes off. Click the gear
+again to hide the row. The editor starts with settings hidden; the chosen skin
+is remembered in host state. Opening settings keeps the same panel scale.
+Classic has a smaller fixed-color pixel gear with the original button lamp
+visible below it. Its settings row matches the brushed-metal skin, pixel labels
+and beveled controls. Modern uses a vector gear, dark rounded settings panels
+and mint accents. Resize the interface from its corner.
+
+The FX Type dropdown selects Off or any of the ten effects. The 4x switch
+enables the original oversampled voice path. Original preset/bank load/save
+buttons still work; Import also accepts supported legacy raw chunks and
+FXP/FXB files. New FXP/FXB files preserve parameter bits. Preset names in FXP
+are limited to 28 bytes; full banks preserve 32-byte names. Panic clears
+active notes and all effect/filter histories.
+
+Recovery 0.1/0.2 and original raw host states remain readable. Legacy preset
+files do not store UI style. No emulator or original executable is required
+at runtime. Refer to TEST-RESULTS.txt for the tested sound-matching scope.

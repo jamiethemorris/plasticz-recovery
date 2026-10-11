@@ -1,0 +1,131 @@
+{
+  "source": "/Library/Audio/Plug-Ins/VST/PlastiCZ.vst/Contents/Resources",
+  "assets": [
+    {
+      "file": "bmp00128.png",
+      "width": 872,
+      "height": 374,
+      "sha256": "651234224e3d488351f155dc0db1966b1a3538d2c5aa80f3d9c0408c37a1de6a"
+    },
+    {
+      "file": "bmp00129.png",
+      "width": 13,
+      "height": 26,
+      "sha256": "6f758517db14639e5757cc7e1aed3fb62c4ff739f6f0a5a886a9e035bad8bf95"
+    },
+    {
+      "file": "bmp00130.png",
+      "width": 13,
+      "height": 22,
+      "sha256": "90172cb71a5daace1a54e77b5be23b526c87ca93ae43800aac795a28dc06ec72"
+    },
+    {
+      "file": "bmp00131.png",
+      "width": 13,
+      "height": 22,
+      "sha256": "0c6e3e4c6ad8e86861af299b4a94178e2ce629da03acc62d667214e6039924f6"
+    },
+    {
+      "file": "bmp00132.png",
+      "width": 13,
+      "height": 26,
+      "sha256": "0e6d6af68677a986f65e8d84bf763f1f2941346c61416c97f54d6f1bfa32a376"
+    },
+    {
+      "file": "bmp00133.png",
+      "width": 13,
+      "height": 26,
+      "sha256": "fa79d0d17d5e4637aae5801c24a062e2575ab711f2cf7921348f377221c50403"
+    },
+    {
+      "file": "bmp00134.png",
+      "width": 13,
+      "height": 26,
+      "sha256": "c9f066b228b1c6e5749905bbb4d4a16f20adeb34d3b34bb7123d3258e4f91ce5"
+    },
+    {
+      "file": "bmp00135.png",
+      "width": 13,
+      "height": 22,
+      "sha256": "96ce12edb3125c57ec91c34e9c8bc9625c5ec06df5ce80913ce3f635a4e293a9"
+    },
+    {
+      "file": "bmp00136.png",
+      "width": 13,
+      "height": 22,
+      "sha256": "40b680fb5388f17ce223a2b0f81c4bf09548756d95f4913ac84ab9831ac5e918"
+    },
+    {
+      "file": "bmp00137.png",
+      "width": 176,
+      "height": 72,
+      "sha256": "5c64c0e6a5e21e0f4a1cca9fd666b48eaace0e6ca4390e4ddcc1f031d22a4d5a"
+    },
+    {
+      "file": "bmp00138.png",
+      "width": 48,
+      "height": 121,
+      "sha256": "a4dad0357c65e7bbd7a7ede23f4aa4603f4f56b33df1bc260876fa56632111f0"
+    },
+    {
+      "file": "bmp00139.png",
+      "width": 6,
+      "height": 77,
+      "sha256": "9a3d885b3118e6fca12467efd14c4936abc9a1a27b19982ae239ffdebd77c661"
+    },
+    {
+      "file": "bmp00140.png",
+      "width": 6,
+      "height": 77,
+      "sha256": "ab557548b78cba2cf675b51a29d202eec70a5f46473f767740de76737bb76b93"
+    },
+    {
+      "file": "bmp00141.png",
+      "width": 30,
+      "height": 63,
+      "sha256": "9073c9d9a4e081fcf293a7c63333385d2ef796e467c0e59b9a548b10bda8de0f"
+    },
+    {
+      "file": "bmp00142.png",
+      "width": 30,
+      "height": 63,
+      "sha256": "14753f5e1ae52a445b5dfc4455ddd4748325416449d81e80e02b0c4a69214d36"
+    },
+    {
+      "file": "bmp00143.png",
+      "width": 23,
+      "height": 32,
+      "sha256": "eb33950c03cb5d76a2e0331f286dff5855123f0457df694f34615e7d266bd454"
+    },
+    {
+      "file": "bmp00144.png",
+      "width": 872,
+      "height": 374,
+      "sha256": "2e68fceebdba13377412b2215663fbfe063189315412df2a82be791335504f71"
+    },
+    {
+      "file": "bmp00145.png",
+      "width": 16,
+      "height": 32,
+      "sha256": "8969ccf8104592a9d6e2ab79cc9800bd25fd0b0dd0806d2cb8b618b973337959"
+    },
+    {
+      "file": "bmp00146.png",
+      "width": 16,
+      "height": 32,
+      "sha256": "6a2ecf163ace7f9081e0a84ca1197f5624ee087bdbe1111f2b500b9bd9614d5f"
+    },
+    {
+      "file": "bmp00147.png",
+      "width": 16,
+      "height": 32,
+      "sha256": "cf437fb1ff1c00d801fb6710d87fd176431524085c52b9de197f69502dc4062a"
+    },
+    {
+      "file": "bmp00148.png",
+      "width": 16,
+      "height": 32,
+      "sha256": "0048204b552f0b56b00171573f87fa742d4998e14a463feb4ce15e6ea08ef8b4"
+    }
+  ]
+}

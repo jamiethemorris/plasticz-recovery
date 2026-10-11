@@ -1,0 +1,146 @@
+PlastiCZ original i386 editor: recovered layout and behavior
+=========================================================
+
+Evidence and reproduction
+-------------------------
+Source: analysis/source/PlastiCZ-i386, SHA-256
+aee3175bd128a69ee82c8e31a34a36284e21698f022c6f722a6c42f2fc94b635.
+Original resources: /Library/Audio/Plug-Ins/VST/PlastiCZ.vst/Contents/Resources.
+Run .venv/bin/python scripts/extract_ui_layout.py to regenerate
+analysis/recovered/original-ui-layout.json. Unicorn requires the already
+authorized local JIT execution outside the workspace sandbox on this machine.
+
+The extractor executes only the original editor-open integer instructions
+0x150a4..0x16bb1. Every call is intercepted. Allocations/vtables are mock
+objects, bitmap dimensions come from the original PNG IHDRs, memcpy is a
+bounded emulated memory copy, and GUI constructors/methods are logged and
+skipped. The inherited DSP cosine initializer is explicitly disabled. No
+Carbon UI, host entrypoint, networking, or license path executes. Static
+analysis supplements that trace for drawing and parameter conversions.
+
+The JSON records 86 constructors, their call sites, original control tags,
+rectangles, bitmap resource IDs, page ownership, editor object fields, 32
+waveform button source crops, and original menu strings. Assertions verify
+all 32 wave bindings/crops and that visible parameter bindings are precisely
+0..37 except dummy indices 6,7,19,26,27. Resource hashes and script hash are
+included. This is strong constructor/drawing evidence, not a claim that the
+original Carbon GUI was run or its complete mouse behavior reproduced.
+
+Editor constructor 0x149a8; editor-open 0x150a4; parameter refresh 0x14b18;
+page switch 0x14fb6; valueChanged 0x18474 (listener thunk 0x39994).
+analysis/disassembly-i386.txt contains the saved original otool listing;
+analysis/evidence/ui-valuechanged.txt is a focused llvm-objdump excerpt.
+Some branch targets need disassembly from the exact target address because
+linear disassembly also traverses embedded jump tables.
+
+Geometry
+--------
+All coordinates are original unscaled pixels, upper-left origin. The two
+original pages are both 872x374. Bitmap128 is the front; bitmap144 is the
+back/setup page. The trace records page0/page1; the setup toggle is shared.
+All rectangles below use x,y,width,height; the JSON is the complete list.
+
+DCW parameter0..5: x=105,137,169,201,249,281; y=148; 13x61; bitmap129.
+AMP parameter20..25: same x; y=285; 13x61; bitmap133.
+Mix parameter16..18: x=703,735,767; y=148; 13x61; bitmap132.
+FX parameter29..31: x=356,388,420; y=285; 13x61; bitmap134.
+Vertical thumb travel is48 pixels: top coordinate148..196 or285..333.
+Drawing0x2dcc7..0x2dd16 uses1-value, so0 isBOTTOM and1 isTOP.
+
+Tuning parameter12/13: x594,y101/125; parameter14/15: x594,y169/193;
+each60x11, thumb travel47 pixels, bitmap130 harmonic/131 fine.
+Misc parameter32/33: x614,y238/262; parameter34/35: x740,y238/262;
+each60x11, thumb travel47 pixels, bitmap135 upper/136 lower.
+
+FX dropdown parameter28: [356,242,60,15]. Its separate noninteractive
+bitmap label is[360,244,48,11], tag39, bitmap138 with11 frames.
+Program dropdown tag45:[121,25,211,28]. Text editor tag44:[121,23,211,31].
+Rename activation tag43:[111,29,9,17]. Previous/next tag46/47:
+[339,21,16,16]/[339,41,16,16], bitmaps145/146.
+Load/save preset tag48/49:[407,21,16,16]/[427,21,16,16].
+Load/save bank tag50/51:[407,41,16,16]/[427,41,16,16].
+Those four use bitmap147. FX bypass parameter36:[482,41,16,16],bitmap148.
+Setup toggle tag52:[502,41,16,16],bitmap147. Back-page4x parameter37:
+[502,66,16,16],bitmap147. No visible controls for the5 dummy parameters.
+VU left/right tag41:[495,280,15,63]/[514,280,15,63],bitmap141/142.
+MIDI activity tag40:[103,6,23,16],bitmap143,2 frames16 high.
+
+Waveform selection
+------------------
+Wave order: Saw, Square, Pulse, SawPulse, DblCos, Reso, ResoSqu, DblSaw.
+The names are strings at0x36718 onward, referenced by the display table.
+Four radio groups bind parameters8,9,10,11, using tags53..84 in groups of8.
+For each wave index w, parameter value=float32(w*0.1428571492433548).
+Refresh quantizes using trunc(float32(p*7.989999771118164)). The selected
+button receives value1 and mouse-enabled0; the other seven value0 and
+mouse-enabled1 (0x14c39..0x14d13). Reclicking the selected button is disabled.
+
+Parameter8: x346,366,386,406,y102 for first4 andy122 for last4.
+Parameter9: same offsets with x446..506. Parameter10/11: same x, y170/190.
+Every destination is16x16. Bitmap137 is176x72. With bank b=(parameter-8)%2,
+unselected source origin=(20*(w%4)+100*b,20*floor(w/4)); selected adds36y.
+Original constructor275b2 divides bitmap height72 by2; its drawing276e8
+adds frameIndex*36 at2786a..27885. Method+0xd8=3e0c4 supplies source origin
+to fields+bc/+c0. The trace now captures those actual method arguments.
+
+Numeric display and slider steps
+--------------------------------
+All arithmetic below is original scalar SSE float32 multiply followed by
+truncation, not rounding; preserve float32 near selection thresholds.
+PB(parameter32): trunc(p*11.989999771118164)+1, range1..12.
+Voices(parameter35): trunc(p*15.989999771118164)+1, range1..16.
+Porta(parameter33): [1,2,4,8,16,32,64][trunc(p*6.989999771118164)].
+Vib(parameter34): integer=trunc(p*19)+1;
+decimal=(trunc(p*190)+10)%10, visually1.0..20.0.
+These come from14d60,14d9a,14dbe,14e75,14e95 and constants3f5e8,3f5f0,
+3f62c,3f770,3f780; Porta integer table51e74.
+
+Digit bitmaps139/140 are6x77:10 digit frames plus a blank, each7 pixels.
+PB tens/ones:[603,240,6,7]/[608,240,6,7]. Porta:[603,264,6,7]/[608,264,6,7].
+Vib:[721,240,6,7],[726,240,6,7],[734,240,6,7].
+Voices:[729,264,6,7]/[734,264,6,7]. All use nonparameter tag39.
+PB/Voices use blank leading tens for values<10; Porta instead shifts a
+single digit left and blanks its right character. Vib decimal point is art.
+No numeric harmonic/fine display controls exist in the original front page.
+
+Slider method+0x100 at3eb06 stores(count-0.01) as quantization field+f8.
+Calls recovered: harmonic controls12/14 use5, PB12, Porta7, Voices16.
+Fine and Vib retain default near-continuous quantization. Complete dragging,
+modifier and double-click behavior is not yet asserted from runtime tests.
+
+Do not confuse front-panel digit values with original host parameter text:
+getParameterDisplay13eec uses formatter pointer table4b1c0. Harmonic/Fine,
+PB/Porta/Vib all call12914, which formats trunc(float32(p*100)) with '%d%%'.
+Voices calls12aac and uses1..16. All parameter labels are empty (131f8).
+
+Menus and actions
+-----------------
+Effect menu table53e40:
+None; separator; Reverb; Delay; separator; TranceGate; separator;
+Chorus; Phaser; Flanger; separator; Distortion; Bitcrusher; separator;
+Leslie; Talkbox.
+The11 logical effects are in that order; first string is literally'None',
+not'Off'. The DSP frequency-shifting algorithm's original UI label is'Phaser'.
+DSP selection uses trunc(float32(p28*10.989999771118164)); logical menu
+selection maps to normalized effectIndex/10 through the menu API.
+
+Context menu tag42 occupies whole front page and has original strings:
+Init preset; Load preset...; Save preset...; separator; Init bank;
+Load bank...; Save bank...; separator; Visit reFX website; separator;
+About PlastiCZ!  Exact string addresses are in the JSON.
+
+valueChanged18474 routes ordinary tags0..37 to setParameterAutomated.
+Tags53..84 map to the waveform groups above. Tag46/47 wraps the current
+program using(current-1)&127 or(current+1)&127. Tag45 chooses a program.
+Tag43 exposes tag44 for renaming; tag44 commits at most32 name bytes.
+Tag52's normalized value selects front/back page using14fb6; the4x control
+is only on the back page. Load/save paths are represented as UI actions;
+this recovery does not execute original file dialogs or website actions.
+
+Limits
+------
+The layout, sprite regions and scalar mappings have direct instruction and
+resource evidence. The Classic recreation can use them independently of old
+VSTGUI/Carbon. Pixel output, font rasterization, right-click propagation,
+slider modifiers and platform dialog behavior were not validated in a live
+original host. The Modern layout is new design, not historical evidence.

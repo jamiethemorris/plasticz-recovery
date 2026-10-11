@@ -1,0 +1,79 @@
+Native AU / VST3 preview build
+=============================
+
+Outputs (workspace only; not installed):
+build/native/PlastiCZRecovery_artefacts/Release/AU/PlastiCZ Recovery.component
+build/native/PlastiCZRecovery_artefacts/Release/VST3/PlastiCZ Recovery.vst3
+
+Identity: PlastiCZ Recovery; org.local.plasticzrecovery; manufacturer Rcvr;
+plugin code PzR1. This is deliberately separate from the original installed
+PlastiCZ, and no original bundle was modified or overwritten.
+
+Build:
+cmake -S . -B build/native -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+cmake --build build/native --parallel 6
+
+Uses <JUCE-checkout> (7.0.5), existing Xcode 16.2/macOS 15.2 SDK,
+and CMake 4.2.3. PLASTICZ_JUCE_PATH is configurable. Builds are arm64 only;
+the original binary and Unicorn are not needed by the resulting plugins.
+PLASTICZ_BUILD_PLUGINS=OFF permits dependency-free native DSP/preset checks.
+
+Wrapper/UI:
+- All 38 original normalized parameters retain fixed numeric IDs plasticz_p00
+  through plasticz_p37, including reserved/dummy fields.
+- Embedded recovered bank supplies 128 factory programs. Program changes save
+  the previous slot's edits; state serialization retains all programs and names.
+- Import accepts recovered raw chunks and supported FXP/FXB variants through
+  Presets.cpp. Failed imports retain the existing state. AU/DAW project containers
+  are not accepted by that codec.
+- Bank/state operations use a critical section outside the audio processing path.
+  Audio reads atomic parameter snapshots, reusing its previous complete snapshot
+  during an overlapping whole-program load. Reset requests are atomic.
+- MIDI events split rendering at their sample timestamps. Pitch bend, modulation,
+  volume, expression, note events and all-notes/all-sound-off are routed to DSP.
+- Editor has four grouped control pages, factory program selector, import action,
+  audition keyboard, and all-notes-off. The visible preview notice states that
+  effects and 4x mode are not available. Their parameter values remain preserved.
+- Displayed normalized values are formatted to three decimals; the internal
+  values and serialized state retain original float32 precision.
+
+Verification:
+- Both output executables are Mach-O 64-bit arm64 bundles.
+- Both complete bundles are ad-hoc signed and pass codesign --verify --deep
+  --strict. CMake post-build commands repeat complete-bundle signing on rebuild.
+- Local native JUCE host loads the actual VST3 and AU outputs and passes:
+  128 programs, sample-timed MIDI onset, finite audible output, bank/current
+  program/parameter restoration, and immediate all-sound-off. Both peaked
+  at 0.23791 for the smoke-test sequence.
+- AU test registration exists only inside the validation-host process. macOS
+  blocks that registration inside the Codex sandbox; the approved unsandboxed
+  test passed and did not install anything.
+- A discovered AU current-preset caching bug was fixed by notifying the host
+  with updateHostDisplay(withProgramChanged) after load/program/name changes.
+- CTest: waveforms, presets, voices, engine_render, rendered_presets all pass (5/5).
+- All 128 native dry C1 WAVs match 33,868,800 original-instruction sample words
+  exactly. The actual AU and VST3 each match both output channels for all 128
+  presets with incoming host FZ off and on: 270,950,400 total channel samples,
+  no differing bits. Full source/build hashes and exact commands are retained in
+  analysis/recovered/preset-renders/native/provenance.json.
+- The processor enables gradual underflow during each callback and restores the
+  host's incoming FP register. The host harness asserts restoration on every
+  callback in both modes. This fixed tiny discrepancies from JUCE's default
+  subnormal flushing. Normal ARM round-to-nearest arithmetic is unchanged.
+- Editor snapshot was visually inspected after correcting narrow-string Unicode
+  rendering and excess decimal places. Final image: build/native/editor-final.png.
+
+Logs:
+build/native/final-build.log
+build/native/host-smoke.log
+build/native/ctest.log
+build/native/ctest-with-presets.log
+analysis/recovered/preset-renders/comparison-final.log
+analysis/recovered/preset-renders/plugin-comparison.log
+
+Limits:
+These are working dry-synthesis preview builds. Native host validation and the
+separate original-instruction differential tests do not establish complete sound
+identity in an original legacy DAW. Effects and original 4x processing remain
+unimplemented; the editor discloses this. The local ad-hoc signature is not
+Developer ID signing or notarization for public distribution.

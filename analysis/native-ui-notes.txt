@@ -1,0 +1,70 @@
+PlastiCZ Recovery 0.3.2: native editor reconstruction
+
+Evidence
+Original bitmap assets 128..148 are copied without modification into
+assets/classic; manifest.json records their original paths, dimensions and
+SHA-256 hashes. Original layout evidence is documented separately in
+analysis/original-ui-notes.txt and analysis/recovered/original-ui-layout.json.
+The original 872x374 front/back panels and recovered control rectangles,
+wave crops, selected frames and numeric-display mappings guide Classic.
+The legacy Carbon editor was not run in a host. Its complete mouse gesture,
+menu, focus, animation and modifier-key behavior has not been validated.
+
+Classic and Modern
+Classic reuses both original panel backgrounds, fader handles, buttons,
+wave selector atlas, numeric digit sheets, MIDI indicator and stereo meters.
+Modern is a vector interpretation using the same panel/control geometry,
+color families and signal grouping. Its envelope previews track parameter
+values. Both offer the original 33 visible parameter bindings; five legacy
+dummy parameters remain preserved in state without inventing controls.
+
+The four waveform groups retain the recovered wave names, selector ranges,
+and original float32 multiplication for new selections. Clicking an already
+selected waveform preserves a non-grid stored value. The explicit 11-entry
+FX menu includes Off and the ten original named algorithms; Off is the
+user-requested wording for the original None. FX labels describe the active
+algorithm. Automation/preset updates display the active selector/toggle
+without rewriting the stored float, including non-grid legacy values.
+
+Original program previous/next, name/rename, load/save preset, load/save
+bank, FX bypass and setup/back-page oversampling controls are functional.
+A bottom-right gear reveals Classic/Modern selection, another 4x toggle,
+Import, and Panic. Settings start hidden each time the editor opens. Classic
+uses an original button sprite with a 9x9 pixel gear above the lamp. The gear
+stays dark; only the original button lamp illuminates. Modern uses a vector gear.
+Classic settings extend the original brushed-metal texture, with new 5x7 pixel
+lettering, beveled buttons and the original 4x switch sprite. Modern settings
+use its dark rounded panel styling, mint accents and matching text sizes. Hiding the drawer also hides its focusable controls. Both oversampling toggles bind the same parameter.
+Settings appearance follows the selected skin immediately. The new Classic
+lettering is code-drawn; the original graphics files remain unchanged.
+Legacy imports/exports do not contain the independent interface preference.
+
+Intentional departures
+- JUCE supplies native menus, file choosers, rename dialog and keyboard/focus
+  behavior. Preset/FX menu text uses modern fonts, rather than the complete
+  legacy bitmap/menu/text-edit implementation. FX width is extended to fit
+  algorithm names. Dynamic FX parameter labels replace generic Par1/Par2.
+- The compact logical editor is 872x374 (default 1090x468). Opening settings
+  adds a 68-pixel row, making it 872x442 (default 1090x553), preserving width
+  and scale. Proportional resizing works up to twice logical size. Classic
+  scales the original raster resources; Modern remains vector drawn.
+- Modern omits the rack screws, dark side strips, and Apple Silicon / format
+  label. Load/save headings are centered over their buttons; preset/bank
+  labels share a right edge and align vertically with their button rows.
+- Modern wave icons and envelope previews are newly drawn visual guides.
+- The faders use continuous host values during dragging rather than copying
+  every original quantized drag/modifier behavior. DSP selector/range mapping
+  is unchanged; display initialization and automation never quantize values.
+- VU indicators use distinct native L/R callback peaks with a UI-only 30 Hz
+  decay and a -48..0dB display range. MIDI blinks for roughly 100 ms after new
+  handled events. Original meter ballistics and MIDI timeout are not claimed.
+- Original website/credits/rack art remain in Classic's background; they are
+  not interpreted as new links or a claim of affiliation.
+
+Review
+Both collapsed and expanded Classic and Modern front-panel snapshots were inspected for control
+alignment, legibility, selector state and clipping. The parent-owned editor
+integration harness checks drawer visibility and scale, both modes, all 128 preset displays, all 11 effect
+choices, bypass/4x, automation, state persistence, export/import and exact
+stored-parameter preservation. Final screenshots/test results are produced
+by the parent build after the last source changes.

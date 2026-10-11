@@ -1,0 +1,143 @@
+Original i386 voice/control/dry-core oracle
+=========================================
+
+Implementation: scripts/voice_oracle.py, importing existing scripts/x86_oracle.py
+Verification: scripts/test_voice_oracle.py, five tests pass
+Fixtures: analysis/recovered/voice-oracle/
+
+Run with workspace virtual environment:
+  .venv/bin/python scripts/voice_oracle.py
+  .venv/bin/python scripts/test_voice_oracle.py
+
+On this Mac the Unicorn JIT requires the approved unsandboxed execution scope.
+No original host entry point, full plugin constructor, UI, Carbon API, system
+audio API or licensing wrapper is invoked. The plugin installation is not edited.
+
+Observed execution
+------------------
+The original instruction functions successfully execute with no unresolved
+imports along these exercised paths:
+  note_on  0xf5e4(object, int channel, int note, float velocity)
+  note_off 0xf3f2(object, int channel, int note)
+  control  0x10534(object)
+  render   0xf8d0(object, float** outputs, int frame_offset, int frames)
+
+The original scalar render path adds to outputs[0], not both channels. The
+fixture clears deterministic buffers before each render. Original stereo
+postprocessing/effects in the outer processing routine are outside this scope.
+
+Imports actually encountered: cosf, expf, powf, memset, memmove. Math arguments
+are read as float32 from the emulated cdecl stack. Current ARM libSystem supplies
+the float32 return, loaded into emulated ST0 by FLD/RET scratch trampolines.
+Import slots are five bytes apart; math slots jump to scratch to avoid adjacent
+stub corruption. memset/memmove perform exactly the requested emulated-memory
+operation. An unimplemented import stops execution with an explicit error.
+
+Core object initialization
+--------------------------
+Allocate 0x410c34-byte original-layout object, zeroed, mapped at 0x1000000.
+voices = object + 0x40635c; 16 records, stride 0x5c (92 bytes).
+parameters = object + 0x4069ac; 38 float32 values.
+
+Original sample-rate setter 0x12c9e establishes:
+  +0xc and +0x406344 = sample_rate
+  +0x406348 = float32(float32(1.0 / sample_rate) * 44100.0)
+The setter also forwards sample rate to effects not needed by this isolated
+dry path. The oracle applies the scalar writes then executes full original
+initializer 0xed14 (including its cosine loop) with x87 control 0x037f.
+
+Original constructor 0x1417d..0x14240 establishes:
+  +0x406358/+0x406359 mono/current flags = 0
+  +0x406338 = 0; voices and key stack zero
+  +0x40634c/+0x406350 scheduling counters = 0
+  +0x406328/+0x406329 MIDI bytes = 0x7f
+  +0x406354 = -1
+  +0x410c30 = 1
+  +0x40632c/+0x406330 pitch bend = 0.5
+  +0x406334 = 0
+  +0x40633c/+0x406340 = 1.0
+  +0x406a44 = 0
+The oracle mirrors these exact scalar writes after its zeroed allocation.
+The retained initialization-assembly.txt shows the original otool disassembly.
+
+All DSP calls use x87 0x0c3f (24-bit precision, round-to-zero) and default
+SSE MXCSR 0x1f80 (round-to-nearest), as in the earlier waveform oracle.
+
+Fixture format and scope
+-------------------------
+manifest.json contains six cases: factory presets 0 at 44100 and 48000 Hz,
+8 at 44100, 32 at 44100, 64 at 48000, and 96 at 44100. Each retains all
+original float32 parameter values except parameter 37, explicitly set to 0
+to choose the non-oversampled original core. Other effects parameters do not
+run because the outer effect pipeline is not called.
+
+Each case starts initialize, control, note_on(60, 100/127), then 160 cycles of
+control followed by render(32). At cycle 20 note 67 is added with velocity
+80/127; at cycle 45 note 60 is released; at cycle 70 note 67 is released.
+These are explicit comparative steps, not a claim that the original host
+calls control once per 32 samples. They exercise both mono and poly states.
+
+voices.bin: 1,956 snapshots of all 16 voices, each 1,472 bytes, little-endian
+original object layout. Every manifest step has voices_byte_offset, pointing
+to the snapshot AFTER that operation.
+audio-mono.f32: 30,720 IEEE-754 float32 little-endian mono samples. Each render
+step has audio_byte_offset, frames and offset. Audio contains finite nonzero
+signals in every case. The manifest retains content hashes and provenance.
+commands.txt repeats the JSON's ordered actions in a whitespace format for the
+dependency-free C++ comparator. Its first line is PLASTICZ_VOICE_ORACLE 1.
+
+Native comparison driver: tests/check_voices.cpp
+Standalone build/run:
+  clang++ -std=c++17 -O2 -ffp-contract=off -fno-fast-math -Isrc \
+    tests/check_voices.cpp src/SynthEngine.cpp src/Waveforms.cpp src/Presets.cpp \
+    -o build/check_voices
+  build/check_voices analysis/recovered/voice-oracle
+
+The comparison checks every 32-bit word in every 16-voice snapshot, including
+integer fields and padding, and every mono output sample. It reports exact bit
+mismatch counts plus maximum absolute float errors. It has no tolerated-error
+threshold and returns failure for any differing state word or audio sample.
+
+Native verification result: all 1,956 full voice snapshots (719,808 words) and
+all 30,720 mono float samples match the original instruction fixtures exactly,
+with zero differing bits and zero maximum absolute error. The executable was
+built for native ARM64 using clang++ with -O2 -ffp-contract=off -fno-fast-math.
+Warning checks also passed with -Wall -Wextra -Wpedantic -Werror. Full output is
+retained in native-comparison.txt. These results cover the six scripted dry
+core cases and share the current host's libSystem math boundary; they are not
+a claim that the complete plugin or all factory sounds match end-to-end.
+
+Suggested native comparator: load the parameter array; repeat each action;
+compare fields against the snapshot after that action. Float words and audio
+can be compared exactly when arithmetic and libm match, with any tolerated
+error explicitly reported. Bytes +0, +0x14, +0x24, +0x25 are mixed integer/flag
+fields rather than independent floats. One record contains 23 four-byte words.
+
+Trust checks
+-------------
+1. Constructor scalar fields, sample-rate ratio and no-voice silence.
+2. Two independent polyphonic note gates; note-off saves envelope levels and
+   changes both envelope stage bytes to 1, releasing only the intended note.
+3. Nonzero render offset produces identical audio/state as offset zero,
+   leaves preceding zeros intact, and preserves sentinel bytes after buffer.
+4. An unknown import fails explicitly instead of silently simulating success.
+5. Full deterministic replay reproduces every one of the 1,956 snapshots and
+   all 30,720 audio samples byte-for-byte.
+
+Evidence limits
+----------------
+This extends instruction-level coverage to note allocation/legato/release,
+control envelopes/modulation/pitch, and dry mono rendering on the scripted
+cases. It is still not legacy macOS/DAW execution. Current ARM cosf/expf/powf
+can differ in the final bits from historical x86 libm. Whole-process control
+scheduling, effects, oversampling, GUI, DAW behavior and full preset audibility
+remain outside these fixtures. Byte-for-byte self-replay establishes oracle
+determinism, not native-port equivalence; the native comparator is separate.
+
+Static evidence reused:
+  ed14 initializer: ev_e0d0c1621b1f5360407910cd6f80b5a70bb321317613b1212f344cefa24ed89a
+  f5e4 note-on: ev_1fba0fa2cc038bda52af463c90a4fcdf66465cba6e1fbe012ae3e6cc122afd13
+  other original functions: analysis/evidence/functions/0xf3f2.txt,
+    0xf8d0.txt, 0x10534.txt
+  original source SHA256:
+    aee3175bd128a69ee82c8e31a34a36284e21698f022c6f722a6c42f2fc94b635

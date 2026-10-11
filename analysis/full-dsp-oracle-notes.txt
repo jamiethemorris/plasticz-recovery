@@ -1,0 +1,64 @@
+Original full-DSP emulator reference setup
+==========================================
+
+Implementation: scripts/full_dsp_oracle.py
+Reference export: scripts/render_full_preset_oracle.py
+Source SHA256: aee3175bd128a69ee82c8e31a34a36284e21698f022c6f722a6c42f2fc94b635
+
+The original instruction renderer is the accepted reference for this project.
+This is a complete selected DSP-path reference, with each factory program's own
+FX type, mix, bypass and 4x settings. It is not a forced 100% wet effect signal.
+All 128 recovered factory programs set parameter 37 (4x) to 0; these fixtures do
+not exercise an enabled 4x path.
+
+Initialization follows the DSP portions observed in original constructors
+0x1454a and 0x14106, without constructing the VST SDK host or Carbon UI:
+- VoiceOracle supplies the source-verified Mach-O segments, original cosine
+  initializer 0xed14, zeroed 0x410c34 synth object and observed voice/control fields.
+- Original synth vtable is0x53b48, from constructor 1454a's PIC-relative write.
+- Call original downsampler constructor 281a6 at object + 40eb18.
+- Call original output processor constructor 2d85c at object + 40eb94.
+- Allocate 0x30c bytes and call original effect-object constructor 25a8c, storing
+  the pointer at object + 40eb8c.
+- Allocate 0x160 bytes and call original filter-object constructor 25742, storing
+  the pointer at object + 40eb90.25740 contains padding; actual entry is25742.
+- Call original sample-rate setter 12c9e, then original parameter setter 12f4a
+  for all 38 original normalized floats. The FX-type setter resets effect state.
+- Default tempo is 120 BPM, matching ed14 and the host's missing-time fallback.
+- Each scheduled render calls original f8d0, then 10e4a on the same buffers.
+  This executes the original input filter, FX dispatcher and output processor
+  2d6aa, as selected by the program. Stereo sample words are copied unchanged.
+
+The scheduler reconstructs the original 1 ms fractional countdown at+406a44;
+all sample/envelope/effect computations run original i386 instructions. Events
+use the test's explicit sample-boundary contract, not the legacy host queue.
+DSP calls use x87 CW 0x0c3f and SSE MXCSR 0x1f80. Constructor calls use 0x037f.
+
+Emulated allocation uses a bounded 32 MiB arena reset for each initialization.
+Allocation starts zeroed; memset/memmove/memcpy execute requested memory copies.
+The full paths additionally use current ARM libSystem double pow/sin/cos/fmax
+and float sinf where imported. The dry layer supplies cosf/expf/powf.
+Unknown imports stop with an error. No DSP or audio routine is stubbed out.
+No rand/time/UI/license/host imports have been needed on exercised paths.
+
+A short full-DSP run covered all 128 presets twice with identical stereo and
+preroll payloads after reinitialization. Nonzero no-note preroll is measured,
+not erased: most cases have tiny bias, some FX cases are larger. WAV data is
+never normalized, dithered or limited. Native dry preview comparisons against
+these full references are expected to differ until remaining DSP is ported.
+
+Evidence:
+- analysis/evidence/functions/0x1454a.txt and 0x14106.txt establish setup order.
+- analysis/evidence/functions/0x12f4a.txt establishes parameter-side resets.
+- analysis/evidence/functions/0x137f4.txt establishes DSP call ordering/clock.
+- analysis/evidence/full-dsp-disassembly.txt retains 9 focused llvm-objdump
+  regions with source hash and explicit instruction starts. Nearest-symbol
+  labels are not interpreted as recovered function identities.
+- analysis/evidence/preset-render.rea.json exports 58 retained REA records.
+
+REA's cached dossiers remained available, but uncached Hopper queries hit a
+bridge startup timeout. The canonical export succeeded. close_binary reported
+cleanup_incomplete for the Hopper document and /tmp/rea-sKKt3h; its UI could not
+be inspected because the Mac was locked. No additional REA session was opened.
+This does not affect the instruction emulator or the saved assembly/reference
+files; do not claim the Hopper document was conclusively closed.

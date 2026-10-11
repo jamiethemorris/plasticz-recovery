@@ -1,0 +1,85 @@
+PlastiCZ reconstruction: native format feasibility
+Checked 2026-10-10 (America/Los_Angeles). Read-only environment inspection;
+no dependency installation and no edits to the original plug-in.
+
+OBSERVED LOCAL BUILD PREREQUISITES
+- Host architecture: arm64 (uname -m).
+- Selected developer directory: /Applications/Xcode.app/Contents/Developer.
+- Xcode 16.2 (16C5032a), macOS 15.2 SDK.
+- CMake 4.2.3 at /opt/homebrew/bin/cmake.
+- JUCE 7.0.5 exists at <JUCE-checkout>. Its AU and VST3
+  wrappers are present. Its bundled VST3 headers identify version 3.7.2.
+  Version evidence: modules/juce_core/system/juce_StandardHeader.h:30-32;
+  modules/juce_audio_processors/format_types/VST3_SDK/pluginterfaces/vst/vsttypes.h:27.
+- Additional JUCE copies: 7.0.2 at
+  <local-projects>/JUCE/pluginval/modules/juce;
+  6.1.6 at <local-projects>/JUCE/PluginGuiMagic/JUCE.
+- /usr/bin/auvaltool is installed; /usr/bin/auval links to it.
+- pluginval source exists under <local-projects>/JUCE/pluginval.
+  This inspection did not prove availability of a built native pluginval binary.
+- No aeffect.h, aeffectx.h, or audioeffectx.h found in the bounded searches
+  of <JUCE-checkout>, <local-projects>/JUCE,
+  and <local-projects>/Intermodulator. This does not
+  establish absence elsewhere on the computer.
+
+FORMAT OUTCOME / INFERENCE
+- VST3 (.vst3): the local JUCE toolchain contains the wrapper and SDK needed
+  to build a new arm64 plug-in from reconstructed C++ DSP. Compile verification
+  is still required; JUCE 7.0.5 is older than the installed Xcode/SDK and could
+  need narrow compatibility fixes. A compiled wrapper alone proves no DSP fidelity.
+- Audio Unit v2 (.component): the same reconstructed processor can use JUCE's
+  AU wrapper and Apple's modern AudioComponent APIs. The deleted original AU
+  is not required to create this new wrapper; its exact identity/preset/session
+  compatibility cannot be recovered from the absent AU alone.
+- Legacy VST2 (.vst): local JUCE includes a wrapper but explicitly requires
+  external VST2 SDK headers. JUCEUtils.cmake:1142 refuses VST targets until
+  juce_set_vst2_sdk_path is configured. juce_VST_Wrapper.cpp:81-89 documents
+  and includes pluginterfaces/vst2.x/aeffect.h and aeffectx.h. An arm64 VST2
+  format is a separate question from the old binary's instruction set, but
+  the standard local JUCE VST2 build path currently lacks those headers.
+  Do not report VST2 delivery as completed or impossible solely from this search.
+- Suggested build settings: CMAKE_OSX_ARCHITECTURES=arm64; AU,VST3 formats;
+  COPY_PLUGIN_AFTER_BUILD=FALSE; JUCE_VST3_CAN_REPLACE_VST2=0 until original
+  identity/state migration is deliberately implemented. All outputs should
+  remain in this workspace during development, not overwrite installed PlastiCZ.
+- Meaningful verification: file/lipo architecture checks; AU validation; native
+  host loading and MIDI/audio/state tests; then original-versus-reconstruction
+  reference rendering. DSP fidelity requires recovered algorithms plus comparison
+  evidence, not only successful build/validation.
+
+PRIMARY DOCUMENTATION AND LIMITATIONS
+1. Apple says macOS Mojave 10.14 was the final release that runs 32-bit apps;
+   macOS Catalina 10.15 and later do not support them. Consequently an i386-only
+   Mach-O cannot be loaded unchanged in the normal modern macOS plug-in path.
+   https://support.apple.com/en-us/103076
+2. Rosetta translates x86_64 applications and applies to the entire process;
+   arm64 and x86_64 cannot be mixed inside one process. This is not a native
+   arm64 conversion service for an old i386 plug-in.
+   https://developer.apple.com/documentation/Apple-Silicon/about-the-rosetta-translation-environment
+3. Apple requires modern Audio Component or Audio Unit Extension APIs for new
+   arm64/macOS 11+ SDK audio-unit code; Carbon Component Manager cannot be used
+   for that architecture. Recovered Carbon GUI/registration code must be replaced.
+   https://developer.apple.com/documentation/apple-silicon/porting-your-audio-code-to-apple-silicon
+4. JUCE's own tutorial states recent JUCE packages include files needed for
+   VST3 and AU builds. Local header inspection substantiates this here.
+   https://juce.com/tutorials/tutorial_create_projucer_basic_plugin/
+5. Current VST3 SDK documentation supports Apple Silicon and Xcode/CMake;
+   current SDK 3.8.x uses MIT licensing. That does not retroactively establish
+   the license of the installed older JUCE-bundled VST3 3.7.2 headers.
+   https://github.com/steinbergmedia/vst3sdk/blob/master/README.md
+6. Steinberg's published VST2 position: SDK distribution and new license
+   agreements ended in October 2018; its current portal says distribution
+   under its VST2 SDK requires the earlier signed agreement. This is a concrete
+   dependency/distribution consideration for a conventional SDK-based build,
+   not an assertion that personal reverse engineering or independent ABI
+   implementation is categorically prohibited.
+   https://forums.steinberg.net/t/vst-2-sdk-discontinued/201774
+   https://steinbergmedia.github.io/vst3_dev_portal/pages/VST%2B3%2BLicensing/Which%2Bfiles%2Bfall%2Bunder%2Bwhich%2Blicense.html
+7. Native format support is host-specific: Steinberg documents that native
+   Apple Silicon Cubase/Nuendo accepts VST3 only. A future arm64 .vst would
+   therefore not guarantee compatibility with every native host.
+   https://helpcenter.steinberg.de/hc/en-us/articles/32056309094290-Cubase-Nuendo-Using-the-native-Apple-Silicon-version
+
+No REA session was opened by this worker; binary identity and DSP evidence are
+owned by the parent investigation. This report establishes packaging prerequisites,
+not a successful build, a recovered algorithm, or matching sound.

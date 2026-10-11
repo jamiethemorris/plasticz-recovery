@@ -1,0 +1,102 @@
+PlastiCZ fixed input filter and stereo output limiter port
+=======================================================
+
+Source: analysis/source/PlastiCZ-i386
+SHA256: aee3175bd128a69ee82c8e31a34a36284e21698f022c6f722a6c42f2fc94b635
+Native implementation: src/OutputProcessing.h and src/OutputProcessing.cpp
+Fixture generator: scripts/output_processing_oracle.py
+Comparator: tests/check_output_processing.cpp
+Fixtures/provenance: analysis/recovered/output-processing/manifest.json
+
+Recovered signal path
+---------------------
+Original 0x10e4a invokes the fixed filter object's virtual +0x4c process on the
+mono voice sum, dispatches the selected effect, and invokes 0x2d6aa on stereo.
+The native OutputProcessing deliberately exposes these as separate processInput
+and processOutput calls so the reconstructed effect can remain between them.
+
+Filter evidence is retained in analysis/evidence/output-filter-disassembly.txt:
+constructor 0x25742, reset 0x24656, coefficient builder 0x246ae, sample-rate
+setter 0x24b00, processor 0x24c70, fixed mode-3 mono path 0x24f7f..0x2511e.
+Constructor defaults select two cascaded biquads followed by four single-pole
+DC-removal stages, adding the original 0x219392ef denormal bias at the same
+points. Every multiply, add, subtract and divide retains original SSE f32 order.
+
+The synth does not expose the filter's internal parameters. The main sample-rate
+setter 0x12c9e checks the filter pointer at +0x40eb90 but passes the FX pointer at
++0x40eb8c for the virtual rate update. Consequently the filter retains its
+constructor's 44,100 Hz rate at all host rates. The native implementation keeps
+the constructor's recovered coefficient bit patterns fixed, including this
+original behavior. This is not a generic substitute filter.
+
+The coefficient snapshots come from the original coefficient builder executing
+with the frozen oracle's current ARM libSystem import boundary. The historical
+Intel libm implementation has not been recovered. Native runtime processing
+does not execute original machine code, an emulator or Python.
+
+Limiter evidence is retained in analysis/evidence/output-limiter-disassembly.txt:
+constructor 0x2d85c, reset 0x2d368, rate setter 0x2d3b4, processor 0x2d6aa.
+It uses stereo-linked absolute peaks, a 0.9f threshold, a held peak and a smoothed
+peak, plus separate 1024-float delay rings. At 44,100 Hz, both smoothing factors
+are 0x3f7a42a5 and the lookahead is 44 samples. The rate setter computes attack
+as expf(-10.0f / (rate * 0.01f)) and release as
+expf((1.0f / (0.01f * rate)) * -10.0f), rounding each operation independently.
+The delay is trunc((0.01f * rate) * 0.1f), with the original 1023 ring mask.
+
+Interface semantics
+-------------------
+prepare(float) configures limiter coefficients and clears histories in both
+stages. reset() clears both stage histories and rings without changing the rate.
+processInput(float*, int) processes mono in place. processOutput(float*, float*,
+int) processes non-aliased stereo channels in place. Both accept zero frames.
+There is no allocation or lock in the processing methods. latencySamples()
+reports the limiter ring delay for wrapper latency reporting.
+
+Native processing must retain gradual underflow and round-to-nearest SSE-style
+arithmetic. Build with -ffp-contract=off -fno-fast-math; the translation unit
+also contains Clang's contract(off) pragma. The wrapper owns host FP-state
+save/restore. prepare rejects nonpositive/nonfinite rates by disabling the
+output limiter; invalid host rates are outside the original-comparison claim.
+
+Verification
+------------
+The isolated generator imports the existing frozen FullDSPOracle without
+modifying any of its dependencies. It invokes original constructors and synth
+parameter setters, then directly calls original filter/limiter routines. Unknown
+imports fail closed in that oracle. Constructor and reset x87 control word is
+0x037f, process calls use 0x0c3f, and SSE MXCSR remains 0x1f80.
+
+All 128 factory parameter sets preserve both entire initialized stage objects
+byte-for-byte at 44,100 Hz, not merely their coefficient subsets. The entire
+input-filter object also remains unchanged at 22,050, 44,100, 48,000, 88,200,
+96,000 and 192,000 Hz. Limiter coefficients/rates follow the original setter.
+
+Each rate tests 12,289 frames, then original reset and another 4,097 frames.
+Both stages receive known input independently, isolating arithmetic differences
+from upstream effects. Signals include signed zeros, separated channel impulses,
+small and large DC steps, asymmetric deterministic random/tonal signals, quieter
+sinusoids, positive/negative subnormals and trailing silence. Block sizes repeat
+1, 7, 44, 0, 512, 3, 1024, 64, 17. Resets use the original methods, not fixture
+memory clearing.
+
+Command:
+  .venv/bin/python scripts/output_processing_oracle.py
+  clang++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -ffp-contract=off \
+    -fno-fast-math -Isrc src/OutputProcessing.cpp \
+    tests/check_output_processing.cpp -o build/check_output_processing
+  build/check_output_processing analysis/recovered/output-processing
+
+Result: 6 cases; 294,948 compared float words; 0 bit mismatches; maximum absolute
+error 0; RMS error 0. Each rate contributes 49,158 words. The fixtures contain
+98,316 mono filter outputs plus 196,632 stereo limiter channel outputs.
+
+Scope and remaining integration checks
+-------------------------------------
+This validates fixed-filter/limiter arithmetic and reset state against the
+accepted instruction-oracle target. It does not by itself validate the selected
+effects, complete synth scheduling, 4x downsampling or wrapper event delivery.
+Those remain distinct integration checks owned by the parent task. The known
+non-44.1-kHz full-synth lifecycle caveat in the frozen FullDSPOracle does not
+affect these isolated filter/limiter objects or their rate tests. These fixtures
+do not exercise nonfinite audio, malicious inputs, or rates outside the six
+listed cases.

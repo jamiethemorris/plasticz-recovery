@@ -1,0 +1,162 @@
+Recovered standalone reverb: native implementation and instruction comparison
+===========================================================================
+
+Source identity
+---------------
+analysis/source/PlastiCZ-i386
+SHA-256 aee3175bd128a69ee82c8e31a34a36284e21698f022c6f722a6c42f2fc94b635
+
+Existing REA dispatcher evidence:
+analysis/evidence/functions/0x10e4a.txt
+ev_9ebf31814046eb6f7ba4843af847bfa3e4407f23450c09a0cec0454c2973193c
+
+Focused original-instruction evidence, produced with local Xcode llvm-objdump:
+analysis/evidence/reverb-disassembly.txt (0x25a66..0x26c20)
+analysis/evidence/full-dsp-disassembly.txt (clean constructor and sample setter)
+analysis/evidence/effects-dispatcher-focused.txt (0x10e4a..0x12668)
+analysis/evidence/effect-case-1.txt (parent's separately annotated dispatcher)
+Jump-table bytes in linear objdump output are data, not executed instructions.
+
+Observed object and API
+-----------------------
+0x25a8c constructs the 0x30c-byte object stored at synth+0x40eb8c.
+Its vtable is 0x54b28. Relevant entries:
+  +0x08 0x25bf2: prepare using current stored sample rate
+  +0x0c 0x25b58: release 26 allocated buffers and mark unprepared
+  +0x10 0x25c10: clear delay memory, preserving cursors and comb histories
+  +0x44 0x26604: sample-rate prepare/allocation
+  +0x48 0x268d6: effect-local parameter setter
+  +0x4c 0x25ee0: additive stereo process, with in-place dry compensation
+0x26abe and 0x26b78 are destruction variants. Other vtable entries are generic
+metadata, parameter-label/display, block-size, or work-buffer configuration;
+they do not add a different sound-processing path used by the synth dispatcher.
+
+Native source: src/LegacyReverb.h and src/LegacyReverb.cpp, no JUCE dependence.
+prepare(float), reset(), configure(unsigned,float), process(input[2],output[2],n)
+and in-place process(left,right,n) correspond to the above behavior. An added
+native lifecycle resetFresh() clears all histories/cursors/buffer memory while
+preserving controls and lengths; it allocates nothing. This is separate from
+the original partial reset() and is tested against fresh original construction
+followed by equivalent configuration.
+
+Effect-local controls (original label strings recovered at 0x51f20)
+----------------------------------------------------------------
+0 dry gain (+0x68), 1 wet gain (+0x6c), 2 equal-power dry/wet mix (+0x70),
+3 mode (+0x74), 4/5 pre-delay left/right (+0x78/+0x7c),
+6/7 roomsize left/right (+0x80/+0x84), 8/9 damping left/right (+0x88/+0x8c),
+10 common pre-delay, 11 common roomsize, 12 common damping, 13 stereo width.
+Controls 4..13 use exactly the setter behavior, including truncation of
+200.99000549316406 * predelay to integer milliseconds before sample conversion.
+The equal-power setter calls the oracle's host cosf/sinf at a float32 angle.
+
+Dispatcher case 1 at 0x1105b sets only these controls each block:
+  0 = (-0.5f * pluginParameter29) + 1.0f
+  1 = 0.5f * pluginParameter29
+  11 = pluginParameter30
+  12 = pluginParameter31
+It duplicates the filtered mono input into right before in-place reverb.
+Changing the plugin effect type calls the original partial reset at 0x13140.
+
+Observed signal path and lifecycle details
+-----------------------------------------
+There are eight parallel damped comb delays and four serial allpass delays per
+channel. The topology resembles a Freeverb-family reverb; that family name is
+an inference, and no external reverb source was used to implement the port.
+The original float32 delay-time tables are at 0x51fa0 (8 combs) and 0x51f78
+(4 allpasses), with 0.5220000147819519 ms added to right-channel times. Delay
+indices begin at zero and decrement with wraparound. Comb feedback is
+room * 0.2800000011920929 + 0.699999988079071; damping is damp * 0.4000000059604645.
+Every individual operation retains original float32 ordering. Compile with
+-ffp-contract=off -fno-fast-math. No emulation or original machine code is used
+by the native processing path.
+
+The original adds float32 0x219392ef (about 1e-18) to both input excitation and
+comb damping updates. This is preserved; original no-note output is not zero.
+The original width path is asymmetric: only right receives the cross-channel
+wet contribution. This is also preserved, including widths 0 and 0.25 in tests.
+Mode 0 sums the two input channels before the reverb; mode 1 processes channels
+independently. Other integer modes leave the outputs unchanged. Mode conversion
+uses truncation under the original DSP x87 control word.
+
+Repeated prepare at the same sample rate returns without clearing state.
+Changing the rate reallocates zeroed delay buffers and resets comb/allpass
+cursors but preserves comb damping histories. Initial preparation leaves
+predelay length zero: the original attempts to apply its 0.1 default while its
+ready flag is still false, so that update is skipped. The synth never calls
+the effect-local predelay setters. These details are covered by comparisons.
+
+Safety boundary for standalone API callers
+------------------------------------------
+prepare supports finite 8000..384000 Hz. Nonfinite parameter values are ignored;
+the original has no such guard. Predelay length is bounded to its allocated
+0.2-second capacity. A downward sample-rate change with an already longer active
+predelay is safely clamped and its cursor reset; the original retains the stale
+length and can address beyond its new allocation. This deliberately safe edge
+case is outside the plugin dispatcher path, which leaves predelay disabled.
+The comparisons cover valid controls, not out-of-range/NaN inputs or the unsafe
+original stale-length case. No claim is made for arbitrary invalid pointer
+aliasing or host misuse.
+
+Reproduction and evidence
+-------------------------
+.venv/bin/python scripts/test_legacy_reverb.py
+
+The local Unicorn JIT needs the already-authorized unsandboxed execution mode;
+inside the macOS sandbox its initialization produces SIGILL. The runner imports
+the frozen scripts/full_dsp_oracle.py without changing it, invokes original
+effect instructions directly, and compares the native arm64 library byte for
+byte. Its original-only path contains no native DSP substitutes. Fixed input
+sequences include impulses, silence and deterministic stereo noise. Block sizes
+vary, with canaries after original buffers. An explicit output-seed tests the
+additive out-of-place behavior. Mid-tail reset, parameter changes, rate changes,
+same-rate prepare, both stereo modes and predelay limits are exercised.
+
+Results are saved under analysis/recovered/legacy-reverb/: report.json records
+source/dependency/compiler/library hashes and every case, and
+original-block-planar.f32 retains original outputs (left then right for each
+successive rendered block; per-case byte offsets and block schedule in report).
+The runner fails on any differing float32 word or changed pinned dependency.
+The original synth's documented non-44.1 kHz initialization limitation does not
+apply to these standalone effect tests, which invoke this object's constructor
+and sample-rate setter directly. Full synth agreement still requires the
+separate integrated bank and host comparisons.
+
+Completed result and cached regression
+--------------------------------------
+All 36 standalone differential cases passed: 1,920,000 channel samples match
+the original instruction outputs exactly, including three fresh-reset cases.
+Original fixture SHA-256:
+591f29b9a7199a296cace493e0f9f22ad70ff04be8049e04e7ad7414aa022b7a
+
+Native-only replay uses standard-library Python and the narrow C ABI test
+library; it neither imports Unicorn nor executes original instructions:
+python3 scripts/check_legacy_reverb_cached.py --library /path/to/test/library
+It verifies fixture payload and per-case hashes before comparing every float32
+word. The test library is built from tests/check_legacy_reverb.cpp and the native
+reverb implementation. This replay also passed all 36 cases.
+
+Read-only integration audit and broader safety test
+--------------------------------------------------
+Effects::resetEffectState matches original 0x12fcd..0x13140: scalar histories
+reset on selector changes; the third formant history remains omitted; the shared
+delay arrays and original partial reverb reset are only cleared if rendering
+the off effect set the clear flag. Effects::reset now uses resetFresh() for the
+native host lifecycle. No source change to these shared integration files was
+made by the reverb worker.
+
+tests/check_effects_safety.cpp is a separate native safety/lifecycle test, not
+an expansion of the strict 44.1 kHz original-audio equivalence claim. It passed:
+  - all 128 presets at 44100, 48000 and 96000 Hz (384 cases), each bit-identical
+    after repeated prepare and after program reset on an existing engine;
+  - 264 effect/normalized-control endpoint/tempo scenarios spanning 1..1000 BPM;
+  - 23,396,352 finite channel samples;
+  - panic versus clean no-note bias output: maximum difference exactly zero;
+  - 117,024 guarded audio-thread calls: zero C++ heap allocations/deallocations.
+The counter overrides global new/delete, including aligned forms; it does not
+interpose system malloc/free. Source review found allocation only in prepare,
+with no allocation in native DSP processing/configuration/reset paths. Clearing
+the fixed buffers during resets is bounded work on the audio thread. These
+tests do not establish 4x-oversampling sound equivalence or GUI/host-thread races.
+The same complete safety test also passed an AddressSanitizer plus
+UndefinedBehaviorSanitizer build (-O1 -g -fsanitize=address,undefined), with no
+sanitizer diagnostics and the identical counts and zero panic difference.

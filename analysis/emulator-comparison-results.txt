@@ -1,0 +1,56 @@
+PlastiCZ Recovery 0.3.2 — smaller Classic gear and settings matched to each skin
+2026-10-10, America/Los_Angeles
+
+New in this build
+- Classic gear reduced from 13x13 to 9x9 pixels and moved above the original
+  lamp. The icon stays dark; only the button lamp illuminates when open.
+- Classic settings use the original brushed-metal texture, new pixel lettering,
+  beveled buttons and the original illuminated 4x switch.
+- Modern settings match its dark rounded panels, mint accents and typography.
+- Settings remain hidden by default; opening preserves panel scale. Interface
+  style changes update the settings row immediately without changing sound.
+- Automatic bundle dates and ZIP timestamp preservation remain enabled.
+- Synth, effects, output processing, preset/state code and original assets are
+  unchanged from 0.3.0. All audio comparisons below were rerun for 0.3.2.
+
+Sound checks
+PASS: all 128 native full C1 preset renders, 67,737,600 channel samples, exact.
+PASS: final arm64 AU/VST3 factory comparisons with incoming host subnormal flush
+both on and off: 270,950,400 channel samples, zero bit differences/max/RMS error.
+Factory protocol: MIDI24, velocity100, 44.1kHz, tempo120, 512-frame preroll,
+2-second hold and 4-second release. Factory4x values are all off.
+
+PASS: separate 4x instruction tests: 19 cases, 427,817 audio sample words and
+183,312 voice/filter state words, zero bit differences/max/RMS error. Includes
+impulse/noise/tiny-signal decimation, five dry rates (22.05..192kHz), large and
+irregular blocks, live threshold changes, inactive voices and all11FX full paths.
+PASS: actual AU/VST3 full4x scenarios with both incoming flush modes: 1,239,656
+channel samples, zero bit differences. Full4x scenarios run at44.1kHz.
+
+PASS: 12 cached regression suites rerun. Prior 0.3.0 ASan/UBSan and allocation
+evidence is retained after verifying its DSP/state sources are unchanged:
+768 factory/rate/4x cases plus264 extremes, 44,630,016 finite channel samples,
+228,768 guarded calls, no C++ heap allocation/deallocation, deterministic resets.
+
+Interface/state checks
+PASS: drawer visibility/scale at 100%, 125% and 200%, Classic and Modern,11FX choices,32wave buttons,26continuous controls,
+bypass/4x, automation, all128preset displays, preservation of exact non-grid
+values, UI preference restore, legacy0.1/0.2/raw states, malformed-state rejection,
+and FXP/FXB export/import. All four compact/expanded screenshots visually reviewed.
+
+Evidence and scope
+analysis/oversampling-port-notes.txt: arithmetic, reference provenance and limits.
+analysis/original-ui-notes.txt: recovered original construction/drawing evidence.
+analysis/native-ui-notes.txt: interfaces and intentional fidelity departures.
+analysis/recovered/release-0.3.2/provenance.json: final build hashes/reports/snapshot.
+
+The accepted oracle runs original i386 instructions with this Mac's ARM
+libSystem math imports; it is not a recording from a historical Intel Mac.
+Full-signal exact comparisons above are at44.1kHz, with broader isolated/safety
+coverage. They do not establish every note/rate/control combination.
+Classic preserves artwork/layout, with native menus and added footer/resizing;
+complete original Carbon gestures and meter ballistics are not claimed.
+
+Both bundles are arm64 and locally ad-hoc signed. The original installed plugin
+is unchanged. This package is for manual installation, uses a separate identity,
+and does not automatically replace original VST2 instances in old DAW sessions.

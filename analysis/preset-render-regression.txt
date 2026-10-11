@@ -1,0 +1,116 @@
+128-preset C1 rendering regression
+=================================
+
+Purpose
+Compare the native dry synthesis engine with the original i386 DSP instructions
+running under the project's isolated Unicorn oracle. The native runner calls
+SynthEngine::render directly; it does not reimplement the control scheduler.
+
+Fixed default protocol
+- All 128 recovered factory programs, in original zero-based index order.
+- MIDI note 24 (C1), velocity 100/127 rounded to float32, 44100 Hz.
+- One discarded 512-frame silent preroll establishes original mono mode while
+  preserving the fractional 1 ms control clock.
+- Note-on before output frame 0 ; 2 seconds held (88200 frames); then note-off and
+  4 seconds of tail. Total 264600 mono samples per preset.
+- 512-frame host blocks remain anchored to output frame 0. The block containing
+  note-off is split exactly at 88200, retaining the remaining block boundary.
+- Effects are bypassed and original parameter 37 (4x mode) is forced to 0. All other
+  factory values are preserved. This suite does not evaluate effects/oversampling.
+- WAV files are unnormalized little-endian mono IEEE float32, with a fact chunk.
+
+Build native runner without JUCE
+  cmake -S . -B build/dsp-tests -DPLASTICZ_BUILD_PLUGINS=OFF -DCMAKE_BUILD_TYPE=Release
+  cmake --build build/dsp-tests --target render_presets --parallel 6
+
+Alternatively, the existing native plugin build already provides:
+  build/native/render_presets
+
+Generate original references (slow; oracle worker owns this command)
+  .venv/bin/python scripts/render_preset_oracle.py --output analysis/recovered/preset-renders --presets all --resume
+
+Unicorn's native JIT needs approved execution outside the Codex sandbox on this
+machine. Resume verifies source/protocol provenance and existing WAV hashes.
+The original oracle's manifest.json records the precise math and execution boundary.
+
+Render native and compare all 128 presets
+  build/native/render_presets --reference analysis/recovered/preset-renders/reference --output analysis/recovered/preset-renders/native --difference analysis/recovered/preset-renders/difference
+
+For a focused rerun, append --first INDEX --count COUNT. Native generation without
+--reference writes only native WAVs. The runner accepts explicit rate/note/velocity/
+block/preroll/held/tail settings, but these must match the oracle protocol.
+
+Outputs
+  reference/preset-000.wav .. preset-127.wav  original-instruction output
+  native/preset-000.wav .. preset-127.wav     native engine output
+  difference/preset-000.wav .. preset-127.wav native minus reference, not normalized
+  native/comparison.csv                      per-preset sample bit and error metrics
+  native/native-manifest.json                native configuration and aggregate result
+
+Metrics include sample count, bit mismatches, first differing sample, maximum
+absolute error, RMS difference and both peaks. A nonzero sample bit mismatch count
+always exits 1; there is no error tolerance. Malformed/missing inputs exit 2.
+All samples must be finite and native dry stereo channels must match bitwise.
+
+Cached CTest integration
+After all reference WAVs exist, rerun CMake configuration. It registers the
+rendered_presets test using PLASTICZ_PRESET_REFERENCE_DIR. Test-generated native
+and difference WAVs go under the build directory's preset-regression/ subtree.
+This test reruns native rendering only; it never launches or modifies the oracle.
+
+Limits
+The reference is original instruction execution under emulation with current
+ARM libSystem cosf/expf/powf imports. It is not a recording from an old Mac/DAW.
+The explicit sample-boundary note contract does not reproduce the old host
+event queue's quantization. One pitch/velocity/sample-rate sequence across all
+presets cannot prove every performance gesture or full plugin equivalence.
+
+Completed dry results
+All 128 native DSP WAVs match all 33,868,800 original dry sample words exactly.
+All five CTests pass, including the cached rendered_presets integration.
+Native WAVs, source hashes, executable hashes, exact invocation and reference
+configuration hash are recorded in native/provenance.json under the suite.
+
+Actual delivered AU/VST3 verification
+  build/native/check_plugin_host_artefacts/Release/check_plugin_host \
+    "$PWD/build/native/PlastiCZRecovery_artefacts/Release/VST3/PlastiCZ Recovery.vst3" \
+    "$PWD/build/native/PlastiCZRecovery_artefacts/Release/AU/PlastiCZ Recovery.component" \
+    "$PWD/analysis/recovered/preset-renders/reference" \
+    "$PWD/analysis/recovered/preset-renders/plugin-comparison.csv"
+
+This loads the built bundles themselves, uses actual MIDI byte velocity 100,
+and renders all 128 programs with the identical preroll/event/block contract.
+Both output channels are compared to the original dry mono sample words.
+Each format is checked with host flush-to-zero disabled and enabled; every
+callback must restore the incoming host mode. All four runs pass exactly:
+67,737,600 channel samples each, 270,950,400 total, zero max/RMS error.
+The AU is registered only within the test process; no installation is performed.
+
+The first host comparison detected differences near 1e-36 caused by the usual
+JUCE ScopedNoDenormals behavior. The processor now uses that guard to preserve
+the host register, explicitly enables gradual underflow during its callback,
+and restores the incoming register afterward. Normal ARM round-to-nearest
+arithmetic is retained; nonstandard incoming rounding modes were not tested.
+The initial failing report is retained as plugin-comparison-ftz-before.*.
+
+Separate full-output gap measurement
+  python3 scripts/compare_full_preset_renders.py
+
+This compares native dry mono duplicated to stereo against the original's
+preserved factory effects, 4x setting and output stages. It requires the complete
+verified original full manifest, validates matching timing/velocity and input
+hashes, writes unnormalized stereo difference WAVs plus JSON/CSV metrics, and
+exits 1 on any bit difference. This is expected to fail for the current preview;
+it is intentionally not a passing CTest. --allow-incomplete produces an explicitly
+partial report while original rendering is still in progress.
+
+Final full-output comparison result
+The complete verified original stereo suite was compared without overrides or
+normalization. All 128 presets differ: 67,737,570 of 67,737,600 channel samples
+have different float32 words. Maximum absolute error is 1.663210690021515 and
+aggregate RMS error is 0.1335820479455315. Exit 1 is the expected result for the
+current dry preview; no complete sound-equivalence claim follows from the dry pass.
+Reports and unnormalized stereo difference WAVs are under
+analysis/recovered/preset-renders-full/preview-comparison/.
+The summary binds original config/manifest, native build provenance, input WAV
+hashes, comparator source hash and every resulting difference WAV hash.

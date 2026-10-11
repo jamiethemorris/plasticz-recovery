@@ -1,0 +1,74 @@
+PlastiCZ native effects/output reconstruction — version 0.2.0
+
+Completed scope
+- All ten effect selections and FX bypass are active in native C++: reverb,
+  tempo delay, gate, chorus, quadrature frequency shift, flanger, distortion,
+  bit/sample-rate reduction, modulated resonant filter, and moving formants.
+- Fixed input tone/DC filter and stereo linked output limiter are active.
+- All original normalized values and legacy preset/state compatibility remain.
+- AU/VST3 report the output lookahead: 44 samples at 44.1 kHz.
+- The native audio path contains no emulator. Allocations occur in preparation,
+  not processing. Explicit resets clear preallocated buffers.
+
+Evidence and reconstruction
+- Original i386 image SHA256:
+  aee3175bd128a69ee82c8e31a34a36284e21698f022c6f722a6c42f2fc94b635
+- Dispatcher dossier: analysis/evidence/functions/0x10e4a.txt,
+  REA evidence ev_9ebf31814046eb6f7ba4843af847bfa3e4407f23450c09a0cec0454c2973193c.
+  Its pseudocode does not cover all jump-table branches, so the native port
+  follows focused original assembly in effects-disassembly.txt and effect-case-*.txt.
+- Original 0x10bbc helper supplies the two allpass branches and quadrature mix.
+- Parameter setter 0x12f4a resets scalar histories on type changes. Its conditional
+  delay/reverb clearing and omitted third-formant reset are retained.
+- Original note-on 0xf6fd resets gate phase only on newly allocated voices.
+  Mono legato returns earlier; smoothing is retained. See gate-note-on-audit.txt.
+  This resolved the first integration's only mismatches (12 gate presets).
+- Dedicated subsystem evidence: output-processing-port-notes.txt,
+  legacy-reverb-notes.txt, full-dsp-initialization-audit.txt.
+- REA session inspection found no active target. Existing saved REA evidence,
+  focused local disassembly and new isolated instruction runs were reused;
+  no additional Hopper session was opened in this implementation phase.
+
+Strict audio results
+- Native full C1 bank: 128/128 presets, 67,737,600 stereo channel samples;
+  bit mismatches 0, maximum error 0, RMS error 0.
+- Actual version 0.2.0 AU and VST3: all 128 presets each with incoming host
+  subnormal flushing off/on; 270,950,400 channel samples, all bit-identical.
+  Host floating-point restoration is asserted for each processing callback.
+- Isolated effects: 44 configurations (all 11 selector values including Off),
+  mixed block sizes, control endpoints and host tempos; 1,940,400 exact samples.
+- Live effects: 22 sequential control events, 299,376 exact samples, including
+  bypass on/off, type changes with retained histories, tempo changes and gate
+  retriggers. Stage fixtures skip only the input-filter/output-limiter calls by
+  placing RET at their entry points in emulator memory; original effect code,
+  parameter setters and note-on instructions execute unchanged.
+- Output stages: 294,948 exact words at 22.05/44.1/48/88.2/96/192 kHz.
+- Reverb: 36 scenarios match, including original partial and explicit fresh resets.
+- The existing dry all-preset and voice/waveform/state tests still pass.
+
+Stability and integration
+- 128 presets at 44.1/48/96 kHz plus 264 parameter/tempo extremes: 23,396,352
+  finite channel samples, deterministic repeated prepare/program reset, and
+  panic matching a clean no-note instance including the original small bias.
+- ASan/UBSan pass. 117,024 guarded render/MIDI/control/panic calls recorded no
+  C++ heap allocations or frees. That counter intercepts global new/delete;
+  code review also found no direct malloc/free calls in these native DSP paths.
+- Actual AU/VST3 loading, sample-offset MIDI, program/state restoration and
+  output latency tests pass. The test host services AU latency notifications
+  through its main run loop, as real hosts do.
+- Effects editor and disabled 4x control visually verified.
+
+Deliberate behavior and remaining coverage
+- Program load, prepare and panic use a fresh allocation-free reset. Original
+  partial reverb reset is retained specifically for effect-type transitions.
+- 4x oversampling/downsampling remains unimplemented. Its normalized state is
+  retained but the control is disabled; all factory presets have it off.
+- Full-signal bit equality is established for C1/MIDI24, velocity100, 44.1 kHz,
+  tempo120, 512-frame preroll, 2-second hold and 4-second release. It is not an
+  exhaustive proof for every note, control gesture, sample rate or host.
+- The full reference helper's non-44.1k constructor lifecycle needs a separate
+  revision before claiming full reference equality at other rates. Native code
+  preserves the inspected original fixed-rate input-filter and +0x5cc behavior.
+- Original instructions use current ARM libSystem imported math in the oracle.
+  The user accepted that emulator boundary; no historical legacy-DAW claim is made.
+- The existing installed PlastiCZ bundle and old 0.1.0 packages were preserved.

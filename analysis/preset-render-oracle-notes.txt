@@ -1,0 +1,122 @@
+Original-instruction factory-preset render suite
+===============================================
+
+Renderer: scripts/render_preset_oracle.py
+Outputs: analysis/recovered/preset-renders/reference/preset-NNN.wav
+Suite metadata: analysis/recovered/preset-renders/manifest.json
+Per-preset provenance: reference/preset-NNN.json
+Native comparison: tests/render_presets.cpp (separate native renderer)
+
+Reference generation:
+  .venv/bin/python scripts/render_preset_oracle.py --presets all
+
+Unicorn's JIT requires the established approved execution scope outside the
+Codex sandbox on this Mac. No original plugin entry point, full constructor,
+GUI, DAW or system audio API is invoked. Unknown imported functions stop
+execution with an error, inherited from the isolated voice oracle.
+
+Protocol
+---------
+Each of the 128 factory programs starts with a fresh original-layout object,
+original table/initializer, constructor scalar fields and copied parameter
+float bits, with parameter 37 set to zero to disable original 4x processing.
+The sound path is original dry mono voice rendering. The outer effect/output
+routine is not called. No gain normalization or peak limiting is performed.
+
+Sample rate: 44100 Hz
+Host block size: 512 frames
+Preroll: one discarded silent 512-frame block through the actual scheduler
+Note: MIDI 24 (C1 when MIDI 60 is C4), channel 0
+Velocity: float32(100 / 127) = 0.787401556968689
+Note-on: immediately before emitted sample 0
+Note-off: immediately before emitted sample 88200 (2 seconds)
+Tail: 176400 samples (4 seconds)
+Total: 264600 samples, six seconds, mono IEEE float32 WAV
+
+Host block boundaries remain at multiples of 512 emitted frames. The block
+containing note-off is split exactly at sample 88200. The fractional control
+countdown persists across host blocks, this MIDI split, and from preroll into
+the emitted note. No standalone synthetic control tick is inserted.
+When a control tick is due exactly at a render segment's end, it executes
+before that call returns; the following MIDI event is then delivered between
+calls. Both the original wrapper and native renderer use this same ordering.
+
+This exact sample-boundary event protocol is intentional. It does not claim
+to reproduce the original outer host MIDI queue's lookahead quantization.
+The discarded preroll lets the original mono-mode initialization settle before
+the first note and advances the fractional clock in an ordinary audio block.
+
+Original 1-ms scheduler
+------------------------
+Static source: original function 0x137f4, assembly at 0x13a1b..0x13aa7,
+0x13ba4..0x13bf7 and 0x13bfc..0x13c37. Saved REA evidence resides in
+analysis/evidence/functions/0x137f4.txt.
+
+Countdown is original object's float32 field +0x406a44, initially 0.
+For each host segment:
+  until_tick = truncate_to_integer(countdown)
+  count = min(until_tick, remaining)
+  execute original dry render 0xf8d0 for count samples, if nonzero
+  countdown = float32(countdown - float32(count))
+  if count == until_tick:
+    countdown = float32(countdown + float32(0.0010000000474974513 * rate))
+    execute original control 0x10534
+Repeat until the segment is consumed. A tick due exactly at a segment's end
+runs before returning, as in the original branch structure. x87 integer
+conversion truncates with control word 0x0c3f; SSE arithmetic rounds to nearest
+with MXCSR 0x1f80. The Python wrapper schedules original instructions; it does
+not synthesize audio or replace envelope/pitch arithmetic.
+
+At the default rate, the period is float32 44.10000228881836 frames. Preroll
+leaves countdown 17.200027465820312. Every default six-second case includes
+6012 control ticks counting preroll and ends at countdown 17.213760375976562.
+
+Files and reproducibility
+--------------------------
+WAV files contain fmt(format tag3), fact and data chunks. Audio payload stores
+the exact little-endian output float words from original instructions. Each
+per-preset JSON records factory name/index, effective parameter words and hash,
+whole-file and payload hashes, configuration hash, peak/RMS/nonzero count,
+scheduler counters and render duration. The top manifest is updated atomically
+after each completed case; complete becomes true only for indexes 0 through127.
+
+Configuration hash covers source binary, factory JSON, generator and oracle
+implementation hashes plus the entire timing/audio contract. Resume verifies
+configuration, index, WAV and audio-payload hashes; it refuses mismatched or
+corrupt existing artifacts instead of mixing suites. A distinct configuration
+requires a distinct output directory. --presets accepts all, lists or ranges;
+--rate, --block-size, --hold-seconds and --release-seconds are configurable.
+
+Native comparator checks all sample words without an error tolerance, and
+writes per-preset bit mismatch count, first mismatch, maximum absolute error,
+RMS error, native/reference peaks and float32 difference WAVs. It compares
+audio payloads rather than RIFF metadata. Default differences are signed native
+minus original, with no normalization.
+
+Boundary of the result
+-----------------------
+The accepted comparison target is original instruction execution under Unicorn
+with current host ARM libSystem cosf, expf and powf. This is not historical x86
+macOS libm, and not legacy DAW execution. Complete success establishes dry-core
+agreement for this defined note/protocol across all factory parameter sets;
+it does not establish original effects, oversampling, arbitrary MIDI sequences,
+host loading or whole-plugin equivalence. Those are separate verification work.
+
+Completed reference run
+------------------------
+All 128 references completed: 33,868,800 samples, 135,482,368 WAV bytes.
+Every file/payload hash, effective factory parameter hash, finite/nonzero audio
+condition and scheduler invariant was independently verified. The maximum raw
+peak is 1.057052493095398. Resume re-verified the entire bank in 0.337 seconds
+without executing DSP again. Full integrity evidence is reference-integrity.json;
+the resume log is resume-verification.log. Environment is environment.json.
+
+Configuration SHA256:
+  31c1c54d13fa1752c4fe0896b27f6ed22180dfd572cbdf1791c1dfa39bfb7947
+Concatenated original audio payload SHA256 (preset index order):
+  7a0f1f44116fd977c75b41be29ff2d33d96772c832a3acf08fa92963f3bbee42
+
+Final native C++ comparator result: all128 presets /33,868,800 mono sample
+words are bit-identical, with zero failed presets, zero maximum absolute error
+and zero RMS error. See native/native-manifest.json and native/comparison.csv.
+The generated difference WAVs contain the signed native-minus-original error.

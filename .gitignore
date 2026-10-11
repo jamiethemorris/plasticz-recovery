@@ -1,0 +1,14 @@
+/.venv/
+/build/
+__pycache__/
+.DS_Store
+.env
+.env.*
+*.pem
+*.key
+# Original binaries, decompilation evidence and test renders stay local.
+/analysis/source/
+/analysis/evidence/
+/analysis/recovered/
+/analysis/disassembly-i386.txt
+/analysis/symbols.txt

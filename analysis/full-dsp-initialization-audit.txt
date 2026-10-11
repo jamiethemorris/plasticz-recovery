@@ -1,0 +1,113 @@
+Read-only audit of the full original-instruction DSP helper
+=========================================================
+
+Audited helper: scripts/full_dsp_oracle.py
+Helper SHA256:
+  097e9dda9b3ffa951564e323e21a2a10fad5d6dd7516a375a7b2f8a74aa87b73
+Original i386 source SHA256:
+  aee3175bd128a69ee82c8e31a34a36284e21698f022c6f722a6c42f2fc94b635
+
+This review used retained constructor/function assembly, original binary words,
+and the existing otool disassembly. No helper/source edits, new REA calls, or
+additional runtime claims were made. The current canonical rendering scope is
+44100 Hz with the previously documented explicit MIDI/scheduler protocol and
+current ARM libSystem math boundary.
+
+Conclusion for the canonical 44100-Hz suite
+------------------------------------------
+No concrete initialization or omitted signal-processing step was found that
+invalidates the current full reference renders. The helper executes the original
+downsampler, filter, effect and output/dynamics paths with their actual objects
+and original virtual tables. The separate non-44100 lifecycle issue below limits
+extension of this conclusion to other rates.
+
+Concrete non-44100 lifecycle discrepancy
+----------------------------------------
+scripts/full_dsp_oracle.py line105 calls the superclass initializer at the
+requested sample rate before the original helper constructors/setter run.
+
+The original normal constructor path behaves differently:
+  0x1416d..0x1417a passes literal 0x472c4400 (44100.0f) to virtual method +0x1c.
+  The vtable at 0x53b48 resolves that method to original sample setter 0x12c9e.
+  0x14193..0x14196 then calls initializer 0xed14.
+  0xed64..0xed72 computes 1.0f / object[0x406344] and writes object[0x5cc].
+  Thus normal construction sets +0x5cc to 1/44100.
+
+Original subsequent sample setter 0x12c9e..0x12d3c writes rate at +0xc and
++0x406344 and the 44100/rate factor at +0x406348, but never updates +0x5cc.
+Effects read +0x5cc at original 0x11154,0x114ad,0x119f2,0x11bd5,0x11e92,
+and0x12023. Initializing the helper directly at48000 sets +0x5cc=1/48000,
+which differs from constructing the original at44100 then receiving a host
+48000 sample-rate update. This can affect effect timing/coefficient behavior.
+
+At the canonical44100 rate both paths are identical. Keep the frozen helper
+and active renders unchanged; clarify/fix the non-44100 lifecycle in a separate
+future configuration before claiming other-rate full reference coverage.
+
+Constructor, pointers and FX reset checks
+----------------------------------------
+- Original constructor1454a calls281a6 at object+40eb18 and2d85c at+40eb94;
+  helper invokes these same functions/addresses. Their stores occupy separate
+  regions from ed14's scalar/timing table fields, so the helper's reordered
+  ed14 call has no identified44.1k DSP overlap.
+- Original14106 allocates0x30c and0x160 byte objects, constructs25a8c/25742,
+  and stores pointers at+40eb8c/+40eb90. Helper does exactly these operations.
+- Vtable0x53b48+0x1c resolves12c9e and+0x2c resolves12f4a, consistent with
+  helper's direct calls. The original sample setter itself forwards twice to
+  +40eb8c when both objects exist; helper deliberately executes this original
+  behavior instead of substituting a presumed corrected filter update.
+- Filter constructor25742 explicitly configures itself at44100 via24b00
+  at257f4. It has valid default coefficients at the current canonical rate.
+- Parameter setter12f4a does not skip writes when the raw float already matches.
+  Its FX reset compares decoded parameter28 against cached type+406354.
+  Superclass initialization sets that cache to-1 and +410c30 to1, ensuring the
+  first effect setter zeroes its original histories/four delay buffers and
+  calls the effect object's original reset virtual at13140.
+- The helper retains parameter37 when original setters run. f8d0 consequently
+  selects its original scalar or4x path; the superclass-created scratch pointer
+  +40eb14 has sufficient space for this suite's short scheduler segments.
+- Limiter/dynamics constructor2d85c clears its own histories and original
+  sample setter2d3b4 enables/configures it. Full render calls10e4a, which invokes
+  that original stereo output processor2d6aa after the effect dispatcher.
+
+Original outer-process operations beyond f8d0 ->10e4a
+----------------------------------------------------
+- Original137f4's no-host-time branch1388a writes120 BPM, then13898..1389d
+  stores it in+4006a0. Helper explicitly writes the same120. DSP effects use
+  this scalar; the omitted host time-info bookkeeping is not read by the
+  inspected dry/effect DSP path.
+- Original13bfc..13c2b calls f8d0 followed by10e4a with identical output
+  pointers, segment offset and segment length, exactly the helper's order.
+- The partial-segment branch13ba4..13bf7 uses the same two DSP calls; its
+  countdown subtraction occurs before rather than after the calls, but neither
+  DSP routine reads the scheduler's+406a44, so the accepted wrapper is equivalent.
+- Original13c3c..13d49 updates metering fields+40eafc/+40eb00 from accumulated
+  absolute signal sums+40eb04/+40eb08, invokes virtual+0x274 and clears sums.
+  In the actual PlastiCZ vtable that virtual resolves to0x3998e, whose bytes
+  55 89 e5 5d c3 are push ebp; mov ebp,esp; pop ebp; ret (no operation).
+  These four meter fields are not read by the inspected dry/effect signal
+  processing except the accumulation itself at10fa4..10fcd. Omitting meter
+  reporting therefore does not feed back into DSP or alter output samples.
+- Original13944..1399d optionally adds its internal result into preexisting
+  host outputs. The helper exposes fresh zeroed outputs, equivalent to the
+  original replacing path (or accumulation into zero); there is no extra
+  output gain/limiter step in that transfer loop.
+- Original note-on/off event dispatch13def..13e3b calls f5e4/f3f2 directly.
+  The helper uses those same routines. The documented sample event contract
+  intentionally differs from the old queue's lookahead timing, already scoped.
+- Resume13fa2 clears voices/meters/event counters, which are already zero in
+  fresh helper objects. The remaining Carbon timer/MIDI-host callback setup
+  does not introduce an additional inspected DSP step before the first note.
+- Original14106's TickCount/srand calls are omitted. The only rand call found
+  in the existing disassembly is0x180f1 in the parameter-randomization path,
+  not the inspected DSP/control/effects path. Unknown imports still fail closed.
+
+Evidence locations
+-------------------
+analysis/evidence/full-dsp-disassembly.txt contains original constructors,
+sample setter, output processor and object layouts.
+analysis/evidence/functions/0x1454a.txt,0x14106.txt,0xed14.txt,
+0x12f4a.txt,0x137f4.txt,0x10e4a.txt,0x13fa2.txt retain REA evidence identifiers.
+The broader existing original otool disassembly supplies the meter callback
+and auxiliary host wrapper details; binary words independently resolve the
+actual virtual-table targets.

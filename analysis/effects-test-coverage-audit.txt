@@ -1,0 +1,69 @@
+Independent effects/output verification coverage review
+======================================================
+
+Reviewed scripts/effects_oracle.py and tests/check_effects.cpp read-only, plus
+factory preset parameter data and the canonical full-render protocol. No extra
+emulation was required for this review. The parent reports the full 128-case
+native comparison passes after integrating the note-on gate-phase correction.
+See analysis/gate-note-on-audit.txt for the original instruction and live
+mono/poly event observations supporting that correction.
+
+Canonical full suite
+--------------------
+128 presets * 264,600 frames * 2 channels = 67,737,600 float words.
+Accepted comparison target: original i386 DSP instructions with the frozen
+oracle's explicit current ARM libSystem import boundary, not a legacy-host
+recording. Canonical configuration is 44,100 Hz, MIDI note 24, float32 velocity
+100/127, tempo 120, 512-frame preroll and host blocks, two-second note hold and
+four-second release tail. Note-off splits the anchored host block exactly.
+
+All eleven FX selector values are represented in the factory bank:
+  selector: 0  1  2  3  4  5  6  7  8  9 10
+  presets:  2 23 12 12 38  5 13  4  6  9  4
+All 128 factory presets have FX bypass parameter 36=0 and 4x parameter 37=0.
+Thus exact agreement across this bank does not test either alternate mode.
+It also does not alone establish behavior for every note/velocity, sustained
+polyphony, live parameter automation, effect-type changes, tempo changes,
+sample-rate changes, host transport discontinuities or longer tails.
+
+Isolated 44-case suite
+---------------------
+The generator schedules all eleven selectors at four parameter/tempo settings
+and 22,050 mono-input frames per case, comparing both output channels:
+  44 * 22,050 * 2 = 1,940,400 float words.
+The original filter entry 0x24c70 and limiter entry 0x2d6aa are replaced with RET
+only in emulator memory. The actual effect dispatcher, helpers and reverb
+instructions remain intact. Fixed input/output stages are independently tested
+by analysis/recovered/output-processing, including six sample rates.
+
+The input includes an impulse, a negative transient above unity, two summed
+sinusoids and a small sample, then silence for the second half. Processing uses
+the same variable block sequence in original and native: 1,7,44,512,127,0,31.
+This tests block-boundary state persistence and zero-length calls, but it is not
+a separate test comparing every possible partition of one stream.
+
+The four configurations use parameter triples:
+  mix=0,    p1=0,    p2=1,    tempo=120
+  mix=1,    p1=1,    p2=0,    tempo=60
+  mix=0.43, p1=0.27, p2=0.71, tempo=137
+  mix=1,    p1=0.61, p2=0.84, tempo=999
+These add useful endpoints and interior samples, not exhaustive coverage of the
+continuous parameter domain. They cover all four gate pattern buckets. Their
+gate timing buckets are 3,0,2,3; bucket 1 is instead covered by ten factory gate
+presets. No isolated case sends MIDI, changes parameters or tempo mid-stream,
+switches the effect type, or verifies effect-state reset after a running effect.
+
+Each case is 0.5 seconds including 0.25 seconds of silence. In the full-wet delay
+configuration p1=1, p2=0, tempo=60, the main delay period is 88,200 samples, four
+times this fixture length, so this case does not reach its main delayed return.
+Other delay configurations and the canonical six-second factory suite exercise
+delayed returns, but not every combination or full decay. Similarly, the short
+isolated reverb tail does not establish complete reverb decay behavior.
+
+Claims supported by combined evidence
+------------------------------------
+The bounded exact-comparison claims can name the full canonical factory suite,
+the separately verified input-filter/output-limiter cases, and whichever of the
+44 isolated effect cases pass their comparator. The evidence should not be
+expanded into an assertion that all possible original settings, 4x processing,
+all host rates, legacy libm behavior or every host lifecycle are already exact.
